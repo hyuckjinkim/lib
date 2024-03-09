@@ -2,9 +2,6 @@
 
 ## Guide
 ```python
-import sys
-sys.path.append('lib-python')
-
-from base import setdiff
-from data_prepare import reduce_mem_usage
+from lib.python.base import setdiff
+from lib.python.data_prepare import reduce_mem_usage
 ```
