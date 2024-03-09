@@ -1,0 +1,94 @@
+#===============================================================================================#
+# 파 일 명 : 
+# 시작날짜 :
+# 수정날짜 : 
+# 작 성 자 : 김혁진
+# 작성주제 : 
+#===============================================================================================#
+# >>>>> 순서 ----
+# 
+# 0. 기본설정 : Env 초기화, Path 지정, Package Load, pbapply opt.
+# 1. Data Load
+#
+#===============================================================================================#
+# >>>>> 고려사항 ----
+# 
+# 1. 
+#
+#===============================================================================================#
+
+
+
+
+
+#======================================================================================================#
+# >>>>> 0. 기본설정 : Env 초기화, Path 지정, Package Load, pbapply opt. ----
+#======================================================================================================#
+
+# Env 초기화
+rm(list=ls())
+invisible(gc(reset=T))
+
+# 작업 디렉토리 설정
+setwd('F:/USB포맷_210223/STUDY/Dacon/11. 산업제어시스템 보안위협 탐지 AI 경진대회')
+
+# User Defined Function Load
+source('F:/USB포맷_210223/STUDY/User Defined Function/R_function.R', encoding = 'UTF-8')
+
+# seed 설정
+seed.num <- 777
+
+# package name
+pkg <- c(
+  "plyr"   , "dplyr" , "data.table", "pbapply", "reshape2"    , "splitstackshape" ,
+   "ggplot2", "pls"   , "gbm"       , "glmnet" , "randomForest", "factoextra"      ,
+   "ipred"  , "rpart" , "nnet"      , "e1071"  , "grid"        , "gridExtra"       ,
+   "MASS"   , "h2o"   , "zoo"       , "sqldf"  , "devtools"    , "Matrix"          ,
+   "lgbdl"  , "Matrix", "lightgbm"  , "ddpcr"  , "mltools"
+   )
+
+# splitstackshape : stratified
+# factoextra : fviz_dend
+# zoo : na.locf
+# ddpcr : quiet
+# lightgbm : devtools, lgbdl, lightgbm
+# Matrix : lightgbm data type -> sparse
+# mltools : one_hot
+
+# install packages
+if (length(setdiff(pkg, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(pkg, rownames(installed.packages())))  
+}
+
+# require libraries
+Packages_fn(pkg)
+
+# pbapply library options
+pboptions(type = "timer", style = 3, char = "=")
+
+# devtools for lightgbm
+options(devtools.install.args = "--no-multiarch")
+
+# rm needless obj.
+rm(pkg)
+
+#=========================================================================#
+# 1. tensorflow
+#=========================================================================#
+# install.packages('tensorflow')
+library(tensorflow)
+# install_tensorflow(version = "gpu")
+
+#=========================================================================#
+# 2. keras : https://bluediary8.tistory.com/29
+#=========================================================================#
+# > anaconda
+# conda create --name r-tensorflow python=3.6
+# activate r-tensorflow
+# pip install --ignore-installed --upgrade tensorflow 
+# conda install -c anaconda tensorflow-gpu
+# conda install -c conda-forge keras
+
+# install.packages('keras')
+library(keras)
+# devtools::install_github("rstudio/keras")

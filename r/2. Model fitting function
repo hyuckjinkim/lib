@@ -1,0 +1,963 @@
+#======================================================================================================#
+# 1-6) train & test 데이터 저장 / model fitting 하는 함수 ----
+#======================================================================================================#
+model_fit_fn <- function(formula = NULL, train_df, test_df, x.vars, y, 
+                         seed.num = 1, list.split.name = "None",
+                         method = c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart"),
+                         progress = T)
+  
+{
+  
+  # rm(list=ls())
+  # gc(reset=T)
+  # 
+  # iter.ls <- 1
+  # 
+  # library(MASS); data(anorexia)
+  # data_df  <- anorexia
+  # 
+  # y        <- "Postwt"
+  # x.vars   <- c("Treat", "Prewt")
+  # formula  <- as.formula("y ~ Treat + Prewt")
+  # 
+  # names(data_df)[which(names(data_df) == y)] <- "y"
+  # 
+  # tr.vec   <- sample(1:nrow(data_df), 0.7*nrow(data_df))
+  # train_df <- data_df[tr.vec, ]
+  # test_df  <- data_df[-tr.vec, ]
+  # 
+  # method = c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart")
+  # seed.num <- 1
+  
+  # start time
+  start.time <- Sys.time()
+  
+  #======================================================================================================#
+  # progress bar function
+  #======================================================================================================#
+  pb_fn <- function(current, total, width = 50, what = ""){
+    
+    # what <- "Fitting"
+    # current <- 1000
+    # total <- 1000
+    # width <- 50
+    
+    # "="
+    bar1 <- rep("=", floor(current/total*width))
+    bar1 <- paste(bar1, collapse = "")
+    
+    # ">"
+    bar2 <- ifelse(bar1=="","",">")
+    
+    # "-"
+    bar3 <- rep("-", ifelse(current == total, 0, width - nchar(bar1) - nchar(bar2)))
+    bar3 <- paste(bar3, collapse = "")
+    
+    # "===>----"
+    bar <- paste0(bar1,bar2,bar3)
+    
+    # sprintf
+    if ( progress ){
+      cat(sprintf(paste0("\r%s [%-", width,"s] ", current, "/", total, " (%g%%)"), what, bar, round(current/total*100,0)),
+          file = stderr())
+    }
+
+  }
+  
+  # 모델링 후 test set을 통하여 prediction을 진행할 때, X변수가 NA이면 yhat도 NA로 나타남.
+  # default는 "na.omit"이므로 NA값을 return하지 않음
+  # 따라서 이를 위하여 NA값이 있을 경우 NA
+  options(na.action = "na.pass")
+  
+  # R_function : APE, MAPE, RSQ
+  # source("H:/STUDY/R/R_function.R", encoding = "UTF-8")
+  
+  # package name
+  pkg <- c("plyr"   , "dplyr", "data.table", "pbapply", "reshape2", "MASS",
+           "ggplot2", "pls"  , "gbm"       , "glmnet" , "randomForest", 
+           "ipred"  , "rpart", "nnet"      , "e1071"  , "grid",
+           "progress")
+  
+  # install packages
+  if (length(setdiff(pkg, rownames(installed.packages()))) > 0) {
+    install.packages(setdiff(pkg, rownames(installed.packages())))  
+  }
+  
+  # require libraries
+  invisible(
+    lapply(pkg, function(element){ 
+      eval(parse(text = paste0("require(", element, ", quietly = TRUE)")))
+    })
+  )
+  
+  # pbapply library options
+  pboptions(type = "timer", style = 3, char = "=")
+  
+  # y의 변수명을 변경
+  names(train_df)[names(train_df) == y] <- "y"
+  names(test_df)[names(test_df) == y]   <- "y"
+
+  # formula에서 y의 변수명 변경
+  formula.x <- gsub(paste0("^", y , "$"), "y", formula)
+  formula   <- as.formula(paste0(formula.x[2], " " ,formula.x[1], " ",formula.x[3]))
+  
+  # progress bar (for each method)
+  if ( progress ){
+    i <- 0
+    pb_fn(current = i, total = length(method), what = "Start")
+  }
+  
+  
+  #======================================================================================================#
+  # 1. OLS : 선형 모델링 공식을 트레이닝 데이터에 적용하여 회귀식을 생성
+  #======================================================================================================#
+  if ( "lm" %in% method ){
+
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". lm"))
+    }
+    
+    # ols fitting
+    lm.fit  <- lm(formula, data = train_df[, c('y', x.vars)])  
+    
+    # 교호작용항을 추가하는 경우에 coef가 NA가 생김
+    # 이런 경우, NA로 나타나는 X변수들을 return
+    no.na.x.vars <- names(which(!is.na(coef(lm.fit))))
+    no.na.x.vars <- no.na.x.vars[!no.na.x.vars %in% "(Intercept)"]
+    
+    # NA인 coef를 제외시키기 위하여 design matrix를 생성
+    model_mat <- model.matrix(formula, data = rbind(train_df, test_df)[, c('y', x.vars)])[, -1]
+    tr.idx    <- c(rep("tr", nrow(train_df)), rep("te", nrow(test_df)))
+    
+    x      <- model_mat[tr.idx == "tr", ]
+    test_x <- model_mat[tr.idx == "te", ]
+
+    # tr.colnm <- colnames(x)
+    # te.colnm <- colnames(test_x)
+    # setdiff(tr.colnm, te.colnm)
+    
+    # NA인 coef를 제외
+    x       <- x[, no.na.x.vars]
+    
+    # test_df의 nrow가 1인경우 matrix형태가 아니라 numeric형태로 나옴
+    # 이를 matrix형태로 맞춰주는 작업.
+    if ( is.matrix(test_x) ){
+      test_x  <- test_x[, no.na.x.vars]
+    } else {
+      test_x  <- test_x[no.na.x.vars]
+      test_x  <- t(test_x)
+    }
+    
+    # 다공선성의 문제로 인하여 coef가 NA로 나타나고, 
+    # predict.lm을 실행하면 NA인 값들 때문에 에러가 나타남
+    # 이를 해결하기 위하여, coef가 NA인 값들을 빼고 X 및 b를 재설정하여 yhat = Xb를 계산
+    beta <- coef(lm.fit)[!is.na(coef(lm.fit))]
+    
+    # training yhat : yhat = Xb
+    lm.pred.te <- cbind(1,test_x) %*% beta
+    lm.pred.te <- as.numeric(lm.pred.te)
+    
+    # test yhat : yhat = Xb
+    lm.pred.tr <- cbind(1,x) %*% beta
+    lm.pred.tr <- as.numeric(lm.pred.tr)
+    
+    # 각각의 예측값과 실제값에 대한 ape 계산
+    lm.ape.tr <- ape_fn(lm.pred.tr, train_df$y)
+    lm.ape.te <- ape_fn(lm.pred.te, test_df$y)
+    
+    # 계산된 ape에 기초하여 mape 계산
+    lm.mape.tr <- mape_fn(lm.pred.tr, train_df$y)
+    lm.mape.te <- mape_fn(lm.pred.tr, train_df$y)
+    
+    # 가장 적중률이 떨어지는 (max.ape) 항목의 ape 산출
+    lm.max.ape.tr <- max(lm.ape.tr, na.rm = T)
+    lm.max.ape.te <- max(lm.ape.te, na.rm = T)
+    
+    # training r-squared
+    lm.rsq.tr  <- rsq_fn(lm.pred.tr, train_df$y)[[1]]
+    lm.rsq2.tr <- rsq_fn(lm.pred.tr, train_df$y)[[2]]
+    lm.rsq3.tr <- rsq_fn(lm.pred.tr, train_df$y)[[3]]
+    
+    # test r-squared
+    lm.rsq.te  <- rsq_fn(lm.pred.te, test_df$y)[[1]]
+    lm.rsq2.te <- rsq_fn(lm.pred.te, test_df$y)[[2]]
+    lm.rsq3.te <- rsq_fn(lm.pred.te, test_df$y)[[3]]
+    # summary(lm.fit)$r.squared
+  }
+  
+  #======================================================================================================#
+  # 2. PLS
+  #======================================================================================================#
+  if ( "pls" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". pls"))
+    }
+    
+    # pls fitting : cross validation 방법으로 RMSEP 를 구하고 최적 ncomp를 찾는 과정
+    set.seed(seed.num)
+    pls.fit <- plsr(formula, data = train_df[, c("y", x.vars)], validation = "CV")
+    
+    # RMSEP(RMSE of prediction)이 가장 낮은 comp의 개수를 선택
+    set.seed(seed.num)
+    pls.RMSEP <- RMSEP(pls.fit, estimate = "CV")
+    min.comp  <- which.min(pls.RMSEP$val)
+    
+    # pls의 parameter 정보
+    # ncomp : min_comp가 1보다 크면 min_comp - 1을 사용하고, 이외는 1을 사용
+    #         array로 되어있어 -1을 해줘야 원하는 component가 지정됨
+    pls.para  <- c('min.comp' = 
+                     ifelse(min.comp > 1, min.comp - 1, 1))
+    
+    # 선택된 ncomp를 통하여 yhat을 계산
+    pls.pred.te <- predict(pls.fit, test_df,  ncomp = pls.para['min.comp'])
+    pls.pred.tr <- predict(pls.fit, train_df, ncomp = pls.para['min.comp'])
+    
+    # # RMSE, R-squared, MAE
+    # defaultSummary(pls.eval)
+    pls.ape.tr <- ape_fn(pls.pred.tr, train_df$y)
+    pls.ape.te <- ape_fn(pls.pred.te, test_df$y)
+    
+    # 계산된 ape에 기초하여 mape 계산
+    pls.mape.tr <- mape_fn(pls.pred.tr, train_df$y)
+    pls.mape.te <- mape_fn(pls.pred.te, test_df$y)
+    
+    # 가장 적중률이 떨어지는 (max.ape) 항목의 ape 산출
+    pls.max.ape.tr <- max(pls.ape.tr, na.rm = T)
+    pls.max.ape.te <- max(pls.ape.te, na.rm = T)
+    
+    # training r-square
+    pls.rsq.tr  <- rsq_fn(pls.pred.tr, train_df$y)[[1]]
+    pls.rsq2.tr <- rsq_fn(pls.pred.tr, train_df$y)[[2]]
+    pls.rsq3.tr <- rsq_fn(pls.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    pls.rsq.te  <- rsq_fn(pls.pred.te, test_df$y)[[1]]
+    pls.rsq2.te <- rsq_fn(pls.pred.te, test_df$y)[[2]]
+    pls.rsq3.te <- rsq_fn(pls.pred.te, test_df$y)[[3]]
+    # pls::R2(pls.fit)$val[,,ifelse(pls.para['min.comp'] > 1, pls.para['min.comp']-1, 1)]
+    
+    # adj.rsq = 1 - (1-r^2)(n-1)/(n-p-1) : p>n인 경우 (0,1)의 값을 가지지 않음
+    # pls.adj.rsq <- adj_rsq_fn(predict(pls.fit, ncomp = ifelse(pls.para['min.comp'] > 1, pls.para['min.comp']-1, 1)), 
+    #                           train_df$y, p = length(coef(pls.fit, ncomp = ifelse(pls.para['min.comp'] > 1, pls.para['min.comp']-1, 1))))
+  }
+  
+  #======================================================================================================#
+  # 3. GBM
+  #======================================================================================================#
+  if ( "gbm" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". gbm"))
+    }
+    
+    # gbm의 parameter 정보
+    gbm.para       <- c('distribution'     = 'gaussian',
+                        'ntrees'           = 10000,
+                        'shrinkage'        = 0.01,
+                        'iteraction.depth' = 20)
+    
+    # gbm fitting
+    set.seed(seed.num)
+    gbm.fit        <- tryCatch(gbm(formula,
+                                   data              = train_df[, c("y", x.vars)],
+                                   distribution      = gbm.para['distribution'],
+                                   n.trees           = gbm.para['ntrees'],
+                                   shrinkage         = gbm.para['shrinkage'],
+                                   interaction.depth = gbm.para['iteraction.depth']), 
+                               error = function(e) "ERROR")
+    
+    # tree 범위 설정
+    n.trees        <- seq(100, 10000, 100)
+    
+    # predict (종종 에러가 나는 경우 pass하고 다음 작업 수행, 에러 여부를 위해 상황 프린트)
+    gbm.para['tryerr'] <- ifelse(is.character(gbm.fit), "ERROR", "Normal")
+    # cat("\n", paste(i,"/",length(mpdata_ls)), " || ", "- tryCatch ERROR : ", tryerr, "\n")
+    
+    # 1) gbm 에러인 경우 임의로 99999 로 모든 값 설정
+    #    : 데이터의 개수가 작을 경우에 에러가 발생
+    if(is.character(gbm.fit)){
+      
+      gbm.para['ntrees'] <- 99999
+      
+      predmatrix         <- matrix(rep(99999, length(n.trees)*nrow(test_df)), 
+                                   nrow = nrow(test_df), ncol = length(n.trees))
+      
+      test.error         <- rep(99999, length(n.trees))
+      best.pred          <- predmatrix[, 1]
+      
+      gbm.mape.tr        <- 99999
+      gbm.mape.te        <- 99999
+      
+      gbm.ape.tr         <- matrix(rep(99999, length(n.trees)*nrow(train_df)), 
+                                   nrow = nrow(train_df), ncol = length(n.trees))
+      gbm.ape.te         <- matrix(rep(99999, length(n.trees)*nrow(test_df)), 
+                                   nrow = nrow(test_df), ncol = length(n.trees))
+      gbm.max.ape.tr     <- 99999
+      gbm.max.ape.te     <- 99999
+      
+      gbm.rsq.tr         <- 0
+      gbm.rsq2.tr        <- 0
+      gbm.rsq3.tr        <- 0
+      
+      gbm.rsq.te         <- 0
+      gbm.rsq2.te        <- 0
+      gbm.rsq3.te        <- 0
+      
+      gbm.pred.te        <- rep(99999, nrow(test_df))
+      gbm.pred.tr        <- rep(99999, nrow(train_df))
+      
+      # 2) 에러가나지 않은 경우 gbm으로 predict후 mape 확인
+    } else {
+      
+      # seq(100, 10000, 100) 단위로 predict matrix를 생성
+      predmatrix         <- predict(gbm.fit, test_df, n.trees = n.trees)
+      
+      # 열(tree개수)을 기준으로 mape를 계산하여 mape가 가장 낮은 tree의 개수를 사용
+      n.trees.best <- apply(predmatrix, 2, function(col){
+        mape_fn(test_df$y, col)
+      }) %>% which.min %>% names
+      
+      # test.error         <- with(apply( ((predmatrix-y)^2)/y, 2, mean), data = test_df)
+      # n.trees.best       <- as.numeric(names(test.error[which(test.error == min(test.error))]))
+      
+      # gbm의 parameter 정보
+      gbm.para['ntrees'] <- n.trees.best
+      
+      # predicted value
+      gbm.pred.te        <- predict(gbm.fit, test_df,  n.trees = as.numeric(gbm.para['ntrees']))
+      gbm.pred.tr        <- predict(gbm.fit, train_df, n.trees = as.numeric(gbm.para['ntrees']))
+      
+      # ape
+      gbm.ape.tr         <- ape_fn(gbm.pred.tr, train_df$y)
+      gbm.ape.te         <- ape_fn(gbm.pred.te, test_df$y)
+      
+      # mape
+      gbm.mape.tr        <- mape_fn(gbm.pred.tr, train_df$y)
+      gbm.mape.te        <- mape_fn(gbm.pred.te, test_df$y)
+      
+      # max ape
+      gbm.max.ape.tr     <- max(gbm.ape.tr, na.rm = T)
+      gbm.max.ape.te     <- max(gbm.ape.te, na.rm = T)
+      # gbm.ape           <- abs((predmatrix - test_df$y))/abs(test_df$y)
+      # gbm.mape          <- test.error[which(test.error == min(test.error))]
+      
+      # training r-square
+      gbm.rsq.tr         <- rsq_fn(gbm.pred.tr, train_df$y)[[1]]
+      gbm.rsq2.tr        <- rsq_fn(gbm.pred.tr, train_df$y)[[2]]
+      gbm.rsq3.tr        <- rsq_fn(gbm.pred.tr, train_df$y)[[3]]
+      
+      # test r-square
+      gbm.rsq.te         <- rsq_fn(gbm.pred.te, test_df$y)[[1]]
+      gbm.rsq2.te        <- rsq_fn(gbm.pred.te, test_df$y)[[2]]
+      gbm.rsq3.te        <- rsq_fn(gbm.pred.te, test_df$y)[[3]]
+      # # gbm은 sse+ssr이 sst가 아님 (cross product term이 0이 아님)
+      # sum( predict(gbm.fit, n.trees = n.trees.best) - train_df$y )
+    }
+  }
+  
+  #======================================================================================================#
+  # 4-6. lasso, ridge, elastic net
+  #  matrix형태로 모델링을 해야하여 x 인자를 따로 matrix화 함)
+  #  generalized model로 glmnet을 사용 
+  #======================================================================================================#
+  # 4. lasso
+  #======================================================================================================#
+  if ( "lasso" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". lasso"))
+    }
+
+    # glmnet에 필요한 model matrix 생성
+    model_mat <- model.matrix(formula, data = rbind(train_df, test_df)[, c('y', x.vars)])[, -1]
+    tr.idx    <- c(rep("tr", nrow(train_df)), rep("te", nrow(test_df)))
+    
+    x      <- model_mat[tr.idx == "tr", ]
+    test_x <- model_mat[tr.idx == "te", ]
+    y      <- train_df$y
+
+    # test_df의 nrow가 1인경우 matrix형태가 아니라 numeric형태로 나옴
+    # 이를 matrix형태로 맞춰주는 작업.
+    if ( !is.matrix(test_x) ){
+      test_x <- t(data.frame(test_x))
+    }
+    
+    # best lambda를 찾기위한 k-fold CV
+    set.seed(seed.num)
+    lasso.cv         <- cv.glmnet(x, y, alpha = 1)
+    lasso.best.lam   <- lasso.cv$lambda.min
+    
+    # lasso parameter 정보
+    lasso.para       <- c('lambda' = lasso.best.lam)
+    
+    # best lambda를 이용하여 다시 fitting
+    lasso.fit        <- glmnet(x, y, alpha = 1, lambda = lasso.para['lambda'])
+    
+    # predicted value
+    lasso.pred.te    <- predict(lasso.fit, newx = test_x)
+    lasso.pred.tr    <- predict(lasso.fit, newx = x)
+    
+    # ape
+    lasso.ape.tr     <- ape_fn(lasso.pred.tr, train_df$y)
+    lasso.ape.te     <- ape_fn(lasso.pred.te, test_df$y)
+    
+    # mape
+    lasso.mape.tr    <- mape_fn(lasso.pred.tr, train_df$y)
+    lasso.mape.te    <- mape_fn(lasso.pred.te, test_df$y)
+    
+    # max ape
+    lasso.max.ape.tr <- max(lasso.ape.tr, na.rm = T)
+    lasso.max.ape.te <- max(lasso.ape.te, na.rm = T)
+    
+    # training r-square
+    lasso.rsq.tr     <- rsq_fn(lasso.pred.tr, train_df$y)[[1]]
+    lasso.rsq2.tr    <- rsq_fn(lasso.pred.tr, train_df$y)[[2]]
+    lasso.rsq3.tr    <- rsq_fn(lasso.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    lasso.rsq.te     <- rsq_fn(lasso.pred.te, test_df$y)[[1]]
+    lasso.rsq2.te    <- rsq_fn(lasso.pred.te, test_df$y)[[2]]
+    lasso.rsq3.te    <- rsq_fn(lasso.pred.te, test_df$y)[[3]]
+  }
+  
+  #======================================================================================================#
+  # 5. ridge
+  #======================================================================================================#
+  if ( "ridge" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". ridge"))
+    }
+    
+    # glmnet에 필요한 model matrix 생성
+    model_mat <- model.matrix(formula, data = rbind(train_df, test_df)[, c('y', x.vars)])[, -1]
+    tr.idx    <- c(rep("tr", nrow(train_df)), rep("te", nrow(test_df)))
+    
+    x      <- model_mat[tr.idx == "tr", ]
+    test_x <- model_mat[tr.idx == "te", ]
+    y      <- train_df$y
+    
+    # test_df의 nrow가 1인경우 matrix형태가 아니라 numeric형태로 나옴
+    # 이를 matrix형태로 맞춰주는 작업.
+    if ( !is.matrix(test_x) ){
+      test_x <- t(data.frame(test_x))
+    }
+    
+    # best lambda를 찾기위한 k-fold CV
+    set.seed(seed.num)
+    ridge.cv         <- cv.glmnet(x, y, alpha = 0)
+    ridge.best.lam   <- ridge.cv$lambda.min
+    
+    # ridge parameter 정보
+    ridge.para       <- c('lambda' = ridge.best.lam)
+    
+    # best lambda를 이용하여 다시 fitting
+    ridge.fit        <- glmnet(x, y, alpha = 0, lambda = ridge.para['lambda'])
+    
+    # predicted value
+    ridge.pred.te    <- predict(ridge.fit, newx = test_x)
+    ridge.pred.tr    <- predict(ridge.fit, newx = x)
+    
+    # ape
+    ridge.ape.tr     <- ape_fn(ridge.pred.tr, train_df$y)
+    ridge.ape.te     <- ape_fn(ridge.pred.te, test_df$y)
+    
+    # mape
+    ridge.mape.tr    <- mape_fn(ridge.pred.tr, train_df$y)
+    ridge.mape.te    <- mape_fn(ridge.pred.te, test_df$y)
+    
+    # max ape
+    ridge.max.ape.tr <- max(ridge.ape.tr, na.rm = T)
+    ridge.max.ape.te <- max(ridge.ape.te, na.rm = T)
+    
+    # training r-square
+    ridge.rsq.tr     <- rsq_fn(ridge.pred.tr, train_df$y)[[1]]
+    ridge.rsq2.tr    <- rsq_fn(ridge.pred.tr, train_df$y)[[2]]
+    ridge.rsq3.tr    <- rsq_fn(ridge.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    ridge.rsq.te     <- rsq_fn(ridge.pred.te, test_df$y)[[1]]
+    ridge.rsq2.te    <- rsq_fn(ridge.pred.te, test_df$y)[[2]]
+    ridge.rsq3.te    <- rsq_fn(ridge.pred.te, test_df$y)[[3]]
+  }
+  
+  #======================================================================================================#
+  # 6. en
+  #======================================================================================================#
+  if ( "en" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". en"))
+    }
+
+    # glmnet에 필요한 model matrix 생성
+    model_mat <- model.matrix(formula, data = rbind(train_df, test_df)[, c('y', x.vars)])[, -1]
+    tr.idx    <- c(rep("tr", nrow(train_df)), rep("te", nrow(test_df)))
+    
+    x      <- model_mat[tr.idx == "tr", ]
+    test_x <- model_mat[tr.idx == "te", ]
+    y      <- train_df$y
+
+    # test_df의 nrow가 1인경우 matrix형태가 아니라 numeric형태로 나옴
+    # 이를 matrix형태로 맞춰주는 작업.
+    if ( !is.matrix(test_x) ){
+      test_x <- t(data.frame(test_x))
+    }
+    
+    # elastic net
+    #  lasso & ridge를 포함하는 범위인 alpha = 0, 1을 제외
+    mape.vec <- c()
+    alpha    <- seq(0, 1, 0.05)
+    alpha    <- alpha[-c(1, length(alpha))]
+    for ( a.i in 1:length(alpha) ){
+      
+      # best lambda를 찾기위한 k-fold CV
+      set.seed(seed.num)
+      cv            <- cv.glmnet(x, y, alpha = alpha[a.i]/100)
+      best.lam      <- cv$lambda.min
+      
+      # best lambda를 이용하여 다시 fitting
+      fit           <- glmnet(x, y, alpha = alpha[a.i]/100, lambda = best.lam)
+      pred          <- predict(fit, newx = test_x)
+      mape.vec[a.i] <- mape_fn(pred, test_df$y)
+    }
+    
+    # mape가 최소인 alpha를 설정하여 다시 fitting
+    alpha.x        <- alpha[which.min(mape.vec)]
+    
+    # best lambda를 찾기위한 k-fold CV
+    set.seed(seed.num)
+    en.cv          <- cv.glmnet(x,y, alpha = alpha.x)
+    en.best.lam    <- en.cv$lambda.min
+    
+    # en parameter 정보
+    en.para        <- c('alpha' = alpha.x, 'lambda' = en.best.lam)
+    
+    # best lambda를 이용하여 다시 fitting
+    set.seed(seed.num)
+    en.fit         <- glmnet(x, y, alpha = en.para['alpha'], lambda = en.para['lambda'])
+    
+    # predicted value
+    en.pred.te     <- predict(en.fit, newx = test_x)
+    en.pred.tr     <- predict(en.fit, newx = x)
+    
+    # ape
+    en.ape.tr      <- ape_fn(en.pred.tr, train_df$y)
+    en.ape.te      <- ape_fn(en.pred.te, test_df$y)
+    
+    # mape
+    en.mape.tr     <- mape_fn(en.pred.tr, train_df$y)
+    en.mape.te     <- mape_fn(en.pred.te, test_df$y)
+    
+    # max ape
+    en.max.ape.tr  <- max(en.ape.tr, na.rm = T)
+    en.max.ape.te  <- max(en.ape.te, na.rm = T)
+    
+    # training r-square
+    en.rsq.tr      <- rsq_fn(en.pred.tr, train_df$y)[[1]]
+    en.rsq2.tr     <- rsq_fn(en.pred.tr, train_df$y)[[2]]
+    en.rsq3.tr     <- rsq_fn(en.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    en.rsq.te      <- rsq_fn(en.pred.te, test_df$y)[[1]]
+    en.rsq2.te     <- rsq_fn(en.pred.te, test_df$y)[[2]]
+    en.rsq3.te     <- rsq_fn(en.pred.te, test_df$y)[[3]]
+  }
+  
+  #======================================================================================================#
+  # 7. RandomForest
+  #======================================================================================================#
+  if ( "rf" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". rf"))
+    }
+    
+    mape <- c()
+    ntree.x <- 1:10 * 100
+    
+    f <- gsub("factor\\(|\\)", "", formula)
+    f <- as.formula(paste0(f[2],f[1],f[3]))
+    
+    # 적절한 tree 개수를 찾는 과정
+    for ( n.i in 1:10 ){
+      # n.i <- 1
+      set.seed(seed.num)
+      fit       <- randomForest(f, data = train_df[, c("y", x.vars)], ntree = ntree.x[n.i])
+      pred      <- predict(fit, test_df)
+      mape[n.i] <- mape_fn(pred, test_df$y)
+    }
+    
+    # mape가 가장 낮은 tree 개수를 선택
+    ntree.best     <- ntree.x[which.min(mape)]
+    
+    # rf parameter 정보
+    rf.para        <- c('ntree' = ntree.best)
+    
+    # best ntree로 다시 fitting
+    set.seed(seed.num)
+    rf.fit         <- randomForest(f, data = train_df[, c("y", x.vars)], ntree = rf.para['ntree'])
+    # rf.fit         <- randomForest(formula, data = train_df[, c("y", x.vars)], ntree = rf.para['ntree'])
+    
+    # predicted value
+    rf.pred.te     <- predict(rf.fit, test_df)
+    rf.pred.tr     <- predict(rf.fit, train_df)
+    
+    # ape
+    rf.ape.tr      <- ape_fn(rf.pred.tr, train_df$y)
+    rf.ape.te      <- ape_fn(rf.pred.te, test_df$y)
+    
+    # mape
+    rf.mape.tr     <- mape_fn(rf.pred.tr, train_df$y)
+    rf.mape.te     <- mape_fn(rf.pred.te, test_df$y)
+    
+    # max ape
+    rf.max.ape.tr  <- max(rf.ape.tr, na.rm = T)
+    rf.max.ape.te  <- max(rf.ape.te, na.rm = T)
+    
+    # training r-square
+    rf.rsq.tr      <- rsq_fn(rf.pred.tr, train_df$y)[[1]]
+    rf.rsq2.tr     <- rsq_fn(rf.pred.tr, train_df$y)[[2]]
+    rf.rsq3.tr     <- rsq_fn(rf.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    rf.rsq.te      <- rsq_fn(rf.pred.te, test_df$y)[[1]]
+    rf.rsq2.te     <- rsq_fn(rf.pred.te, test_df$y)[[2]]
+    rf.rsq3.te     <- rsq_fn(rf.pred.te, test_df$y)[[3]]
+  }
+  
+  #======================================================================================================#
+  # 8. bagging
+  #======================================================================================================#
+  if ( "bag" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". bag"))
+    }
+    
+    # bagging fitting
+    set.seed(seed.num)
+    bag.fit        <- bagging(formula, data = train_df[, c("y", x.vars)])
+    
+    # predicted value
+    bag.pred.te    <- predict(bag.fit, test_df)
+    bag.pred.tr    <- predict(bag.fit, train_df)
+    
+    # ape
+    bag.ape.tr     <- ape_fn(bag.pred.tr, train_df$y)
+    bag.ape.te     <- ape_fn(bag.pred.te, test_df$y)
+    
+    # mape
+    bag.mape.tr    <- mape_fn(bag.pred.tr, train_df$y)
+    bag.mape.te    <- mape_fn(bag.pred.te, test_df$y)
+    
+    # max ape
+    bag.max.ape.tr <- max(bag.ape.tr, na.rm = T)
+    bag.max.ape.te <- max(bag.ape.te, na.rm = T)
+    
+    # training r-square
+    bag.rsq.tr     <- rsq_fn(bag.pred.tr, train_df$y)[[1]]
+    bag.rsq2.tr    <- rsq_fn(bag.pred.tr, train_df$y)[[2]]
+    bag.rsq3.tr    <- rsq_fn(bag.pred.tr, train_df$y)[[3]]
+    
+    # test r-square    
+    bag.rsq.te     <- rsq_fn(bag.pred.te, test_df$y)[[1]]
+    bag.rsq2.te    <- rsq_fn(bag.pred.te, test_df$y)[[2]]
+    bag.rsq3.te    <- rsq_fn(bag.pred.te, test_df$y)[[3]]
+  }
+  
+  #======================================================================================================#
+  # 9. rpart
+  #======================================================================================================#
+  if ( "rpart" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". rpart"))
+    }
+    
+    # rpart fitting을 위한 model matrix 생성
+    # : rpart의 경우에는 node가 나뉘는 logic을 0 or 1 (yes or no)으로 인식하므로 상호작용항을 고려하지 않음
+    #   이를 위하여 임의적으로 model matrix를 생성하여 fitting
+    # rpart.fit <- rpart(formula, data = train_df[, c("y", x.vars)])
+    # Error in rpart(formula, data = train_df[, c("y", x.vars)]) : 
+    #   트리(trees)는 교호작용항(interaction terms)을 다룰 수 없습니다.
+    model_mat <- model.matrix(formula, data = rbind(train_df, test_df)[, c('y', x.vars)])[, -1]
+    tr.idx    <- c(rep("tr", nrow(train_df)), rep("te", nrow(test_df)))
+    
+    x      <- model_mat[tr.idx == "tr", ]
+    test_x <- model_mat[tr.idx == "te", ]
+    
+    # rpart fitting
+    set.seed(seed.num)
+    fit       <- rpart(train_df$y ~ ., data = x)
+    
+    # pruning
+    rpart.fit <- rpart(train_df$y ~ ., data = x, 
+                       control = rpart.control(cp = min(fit$cptable[,3])))
+    
+    # par(mfrow = c(1,1))
+    # rpart.plot(rpart.fit)
+    
+    # predicted value
+    rpart.pred.te    <- predict(rpart.fit, test_x)
+    rpart.pred.tr    <- predict(rpart.fit, x)
+    
+    # ape
+    rpart.ape.tr     <- ape_fn(rpart.pred.tr, train_df$y)
+    rpart.ape.te     <- ape_fn(rpart.pred.te, test_df$y)
+    
+    # mape
+    rpart.mape.tr    <- mape_fn(rpart.pred.tr, train_df$y)
+    rpart.mape.te    <- mape_fn(rpart.pred.te, test_df$y)
+    
+    # max ape
+    rpart.max.ape.tr <- max(rpart.ape.tr, na.rm = T)
+    rpart.max.ape.te <- max(rpart.ape.te, na.rm = T)
+    
+    # training r-square
+    rpart.rsq.tr     <- rsq_fn(rpart.pred.tr, train_df$y)[[1]]
+    rpart.rsq2.tr    <- rsq_fn(rpart.pred.tr, train_df$y)[[2]]
+    rpart.rsq3.tr    <- rsq_fn(rpart.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    rpart.rsq.te     <- rsq_fn(rpart.pred.te, test_df$y)[[1]]
+    rpart.rsq2.te    <- rsq_fn(rpart.pred.te, test_df$y)[[2]]
+    rpart.rsq3.te    <- rsq_fn(rpart.pred.te, test_df$y)[[3]]
+  }
+  
+  #======================================================================================================#
+  # 10. pcr
+  #======================================================================================================#
+  if ( "pcr" %in% method ){
+    
+    # progress bar (for each method)
+    if ( progress ){
+    i <- i+1
+    pb_fn(current = i, total = length(method), what = paste0(i, ". pcr"))
+    }
+    
+    # pcr fitting
+    set.seed(seed.num)
+    pcr.fit      <- pcr(formula, data = train_df[, c("y", x.vars)], 
+                        validation = "CV", jackknife = T, scale = F)
+    
+    # RMSEP(RMSE of prediction)이 가장 낮은 comp의 개수를 선택
+    set.seed(seed.num)
+    pcr.RMSEP    <- RMSEP(pcr.fit, estimate = "CV")
+    min.comp     <- which.min(pcr.RMSEP$val)
+    
+    # pcr parameter 정보
+    pcr.para     <- c('min.comp' = 
+                        ifelse(min.comp > 1, min.comp-1, 1))
+    
+    # ncomp : min_comp가 1보다 크면 min_comp - 1을 사용하고, 이외는 1을 사용
+    pcr.pred.te    <- predict(pcr.fit, test_df,  ncomp = pcr.para['min.comp'])
+    pcr.pred.tr    <- predict(pcr.fit, train_df, ncomp = pcr.para['min.comp'])
+    
+    #각각의 예측값과 실제값에 대한 ape 계산
+    pcr.ape.tr     <- ape_fn(pcr.pred.tr, train_df$y)
+    pcr.ape.te     <- ape_fn(pcr.pred.te, test_df$y)
+    
+    #계산된 ape에 기초하여 mape 계산
+    pcr.mape.tr    <- mape_fn(pcr.pred.tr, train_df$y)
+    pcr.mape.te    <- mape_fn(pcr.pred.te, test_df$y)
+    
+    #가장 적중률이 떨어지는 (max.ape) 항목의 ape 산출
+    pcr.max.ape.tr <- max(pcr.ape.tr, na.rm = T)
+    pcr.max.ape.te <- max(pcr.ape.te, na.rm = T)
+    
+    # training r-square
+    pcr.rsq.tr     <- rsq_fn(pcr.pred.tr, train_df$y)[[1]]
+    pcr.rsq2.tr    <- rsq_fn(pcr.pred.tr, train_df$y)[[2]]
+    pcr.rsq3.tr    <- rsq_fn(pcr.pred.tr, train_df$y)[[3]]
+    
+    # test r-square
+    pcr.rsq.te     <- rsq_fn(pcr.pred.te, test_df$y)[[1]]
+    pcr.rsq2.te    <- rsq_fn(pcr.pred.te, test_df$y)[[2]]
+    pcr.rsq3.te    <- rsq_fn(pcr.pred.te, test_df$y)[[3]]
+    # pls::R2(pcr.fit)$val[,,ifelse(pcr.para['min.comp'] > 1, pcr.para['min.comp']-1, 1)]
+  }
+  
+  #======================================================================================================#
+  # 결과 정리 
+  #======================================================================================================#
+  
+  # progress bar (for each method)
+  if ( progress ){
+  pb_fn(current = i, total = length(method), what = "Result reporting")
+  }
+  
+  # rank 기준으로 best algorithm을 구할 경우, 동일한 rank가 존재할 경우에는 첫번째 algorithm을 가져옴
+  # 따라서 먼저 선택되는 algorithm을 정하기 위하여 다음과 같이 순서를 설정
+  rank.model <- lapply(method, function(element){
+    rank <- switch(element,
+                   "lm" = 1, "lasso" = 2, "pls" = 3, "ridge" = 4, "en" = 5, 
+                   "gbm" = 6, "pcr" = 7, "rf" = 8, "bag" = 9, "rpart" = 10)
+    return(rank)
+  }) %>% unlist
+  
+  # 모형의 우선순위를 기준으로 사용된 모형을 정렬
+  rank_df     <- data.frame(method, rank.model, stringsAsFactors = F) %>% arrange(rank.model)
+  model.names <- rank_df$method
+  
+  #======================================================================================================#
+  # 1. performance
+  #======================================================================================================#
+  # model.code, total.nrow, test.nrow, mape, max.ape, rsq1~3을 포함하는 performance DF 생성
+  perf_df <- data.frame(model.code   = list.split.name,
+                        total.nrow   = nrow(train_df) + nrow(test_df), test.nrow = nrow(test_df),
+                        t(sapply(paste0(model.names, ".mape.tr")   , function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".mape.te")   , function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".max.ape.tr"), function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".max.ape.te"), function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".rsq.tr")    , function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".rsq2.tr")   , function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".rsq3.tr")   , function(element){ eval(parse(text = element)) })),                        
+                        t(sapply(paste0(model.names, ".rsq.te")    , function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".rsq2.te")   , function(element){ eval(parse(text = element)) })),
+                        t(sapply(paste0(model.names, ".rsq3.te")   , function(element){ eval(parse(text = element)) })),
+                        stringsAsFactors = F)
+  
+  # mape, rsq combination
+  mape.comb <- perf_df[, grep("[.]mape.te$", names(perf_df))]
+  rq.comb   <- perf_df[, grep("[.]rsq.te$" , names(perf_df))]
+  
+  if ( length(mape.comb) == 1 ){
+    names(mape.comb) <- paste0(model.names, ".mape")
+    names(rq.comb)   <- paste0(model.names, ".rsq")
+  }
+  
+  # # en == lasso / ridge인 경우, best.mape.al이 en, lasso/ridge가 걸리므로 1번째 것만 뽑음
+  # 1. mape 기준 best algorithm
+  perf_df$best.mape.al  <- names(mape.comb)[which(mape.comb == min(mape.comb))][1]
+  perf_df$best.mape.al  <- strsplit(perf_df$best.mape.al, "[.]")[[1]][1]
+  perf_df$best.mape     <- as.numeric(mape.comb[which(mape.comb == min(mape.comb))][1])
+  
+  perf_df$best.mape.rsq  <- perf_df[, paste0(perf_df$best.mape.al, ".rsq.te")]
+  perf_df$best.mape.rsq2 <- perf_df[, paste0(perf_df$best.mape.al, ".rsq2.te")]
+  perf_df$best.mape.rsq3 <- perf_df[, paste0(perf_df$best.mape.al, ".rsq3.te")]
+  
+  # 2. r square 기준 best algorithm
+  perf_df$best.rq.al    <- names(rq.comb)[which(rq.comb == max(rq.comb))][1]
+  perf_df$best.rq.al    <- strsplit(perf_df$best.rq.al, "[.]")[[1]][1]
+  perf_df$best.rq       <- as.numeric(rq.comb[which(rq.comb == max(rq.comb))][1])
+  
+  
+  #======================================================================================================#
+  # 2. model object
+  #======================================================================================================#
+  # mape가 가장 작은 알고리즘이 무엇인가와 추후 예측에 쓰일 모델들을 저장
+  model_ls <- lapply(model.names, function(element){
+    model.fit <- eval(parse(text = paste0(element, ".fit")))
+    return(model.fit)
+  })
+  names(model_ls) <- model.names
+  
+  # best model
+  best.model <- eval(parse(text = paste0(perf_df$best.mape.al, ".fit")))
+  
+  save.model <- list(lm = train_df[, x.vars],
+                     best = best.model)
+  
+  #======================================================================================================#
+  # 3. parameter 
+  #======================================================================================================#
+  rank_df$exists.para <- !rank_df$method %in% c("lm", "bag", "rpart")
+  
+  para_ls <- lapply(rank_df$method[rank_df$exists.para], function(element){
+    fit.para <- eval(parse(text = paste0(element, ".para")))
+    return(fit.para)
+  })
+  names(para_ls) <- rank_df$method[rank_df$exists.para]
+  
+  if ( length(para_ls) == 0 ){
+    para_df <- NULL
+  } else{
+    form_ls <- as.character(formula) 
+    para_df <- data.frame(t(unlist(para_ls)), 
+                          formula = paste(form_ls[c(2,1,3)], collapse = " "),
+                          x.vars = paste(x.vars, collapse = " + "),
+                          stringsAsFactors = F)
+  }
+  
+  #======================================================================================================#
+  # 4. predicted value
+  #======================================================================================================#
+  # 향후 모델링을 예측에 적용할 때 필요한 데이터셋 저장
+  tr_pred_df <- lapply(model.names, function(element){
+    pred <- eval(parse(text = paste0(element, ".pred.tr"))) 
+    return(pred)
+  }) %>% do.call(cbind, .)
+  tr_pred_df <- data.frame(train_df$y, tr_pred_df, stringsAsFactors = F)
+  names(tr_pred_df) <- c("actual", paste0(model.names, ".pred"))
+  
+  te_pred_df <- lapply(model.names, function(element){
+    pred <- eval(parse(text = paste0(element, ".pred.te"))) 
+    return(pred)
+  }) %>% do.call(cbind, .)
+  te_pred_df <- data.frame(test_df$y, te_pred_df, stringsAsFactors = F)
+  names(te_pred_df) <- c("actual", paste0(model.names, ".pred"))
+  
+  pred_ls <- list(train = tr_pred_df, test = te_pred_df)
+  
+  # list for return
+  # result_list <- list(performance = cbind(perf_df, para_df), model = model_ls, prediction = pred_ls)
+  result_list <- list(performance = perf_df, parameter = para_df, model = save.model, prediction = pred_ls)
+  
+  # end time
+  end.time <- Sys.time()
+  
+  # print the runnging time 
+  if ( progress ) runtime_fn(start.time, end.time)
+  
+  # return the result
+  return(result_list)
+}
+
+
+
+
+# iter.ls <- 1
+# 
+# library(MASS); data(anorexia)
+# data_df  <- anorexia
+# 
+# y        <- "Postwt"
+# x.vars   <- c("Treat", "Prewt")
+# formula  <- as.formula("y ~ Treat + Prewt")
+# 
+# names(data_df)[which(names(data_df) == y)] <- "y"
+# 
+# tr.vec   <- sample(1:nrow(data_df), 0.7*nrow(data_df))
+# train_df <- data_df[tr.vec, ]
+# test_df  <- data_df[-tr.vec, ]
+# 
+# method   <- c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart")
+# seed.num <- 3
+# 
+# fit_res_ls <- model_fit_fn(formula, train_df, test_df, x.vars, y, seed.num = 1, list.split.name = "None",
+#                            method = c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart"))
+# 
+# fit_res_ls$performance
+# fit_res_ls$parameter
+# fit_res_ls$model
+# fit_res_ls$prediction

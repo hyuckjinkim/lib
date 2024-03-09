@@ -1,0 +1,3 @@
+# on Terminal
+pip install ipynb-py-convert
+ipynb-py-convert "in.ipynb" "out.py"

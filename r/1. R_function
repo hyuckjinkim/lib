@@ -1,0 +1,615 @@
+#======================================================================================================#
+# Table of Contents
+#======================================================================================================#
+#
+#    1. Packages_fn
+#    2. reinstall_fn
+#    3. pb_fn 
+#    4. runtime_fn
+#    5. sle_fn, msle_fn, rmsle_fn
+#    6. ape_fn, mape_fn, smape_fn
+#    7. rsq_fn
+#    8. desc_fn
+#    9. equal_level_check_fn
+#   10. unique_level_check_fn
+#   11. unique_freq_check_fn
+#   12. stratified_fn
+#   13. is.POSIXct, is.POSIXlt, is.POSIXt, is.Date, is.timevar
+#   14. theme_black
+#   15. predict_kmeans_fn
+#   16. unit_fn
+#   17. calculation the time
+#
+#======================================================================================================#
+
+
+
+#======================================================================================================#
+# 1. 패키지설지 : 설치되지않은 패키지들을 설치하고, 로딩함 ----
+#======================================================================================================#
+Packages_fn <- function(pkg){
+  
+  # pkg = "Boruta"
+  
+  # 설치되어있는 패키지들 모음
+  installed.pkg <- rownames(installed.packages())
+  
+  # 패키지가 설치되어있지 않으면, 설치되지않은 패키지들을 설치
+  if ( length(setdiff(pkg, installed.pkg)) > 0 ) {
+    install.packages(setdiff(pkg, installed.pkg))  
+  }
+  
+  invisible(
+    sapply(pkg, function(element){ 
+      eval(parse(text = paste0("require(", element, ", quietly = TRUE)")))
+    })
+  )
+}
+
+#======================================================================================================#
+# 2. reinstall function ----
+#======================================================================================================#
+reinstall_fn <- function(pkg){
+  remove.packages(pkg) # remove
+  install.packages(pkg) # install
+  eval(parse(text = paste0('library(',pkg,')'))) # require the library
+}
+# reinstall_fn("dplyr")
+# reinstall_fn("ggplot2")
+# reinstall_fn("factoextra")
+
+#======================================================================================================#
+# 3. progress bar function ----
+#======================================================================================================#
+pb_fn <- function(current, total, width = 50, what.1 = "", what.2 = ""){
+
+  # what.1  <- c("","Fitting")[2]
+  # what.2  <- "Good"
+  # current <- 1000
+  # total   <- 1000
+  # width   <- 50
+
+  # (1) : "="
+  bar1 <- rep("=", floor(current/total*width))
+  bar1 <- paste(bar1, collapse = "")
+  
+  # (2) : ">"
+  bar2 <- ifelse(bar1=="","",">")
+  
+  # (3) : "-"
+  bar3 <- rep("-", ifelse(current == total, 0, width - nchar(bar1) - nchar(bar2)))
+  bar3 <- paste(bar3, collapse = "")
+  
+  # (1,2,3,) : "===>----"
+  bar <- paste0(bar1,bar2,bar3)
+  
+  # spacing : 끝쪽에 공백을만들어서, 긴 문자가 남지않도록 하는거
+  spacing <- paste0(rep(" ", 40), collapse = "")
+  
+  # sprintf : progress
+  cat(sprintf(paste0("\r%s [%-", width,"s] ", current, "/", total, " (%g%%) ", what.2), 
+              what.1, bar, round(current/total*100,0)),
+      file = stderr())
+  
+  
+  # cat(sprintf(paste0("\r%s [%-", width,"s] ", current, "/", total, " (%g%%)", spacing), 
+  #             what.1, bar, round(current/total*100,0)),
+  #     file = stderr())
+}
+# for ( i in 1:(10^5) ){
+#   pb_fn(current=i,total=(10^5))
+# }
+
+
+#======================================================================================================#
+# 4. runtime ----
+#======================================================================================================#
+runtime_fn <- function(start.time, end.time){
+  # start.time <- Sys.time()
+  # end.time   <- Sys.time()
+  
+  mins <- as.numeric(difftime(end.time, start.time, units = "mins"))
+  
+  run.time <- ifelse(mins < 1, paste0(round(mins*60, 3), " secs"),
+                     ifelse(mins > 60, paste0(round(mins*3600, 1), " hours"), 
+                            paste0(round(mins,1), " mins")))
+  
+  cat(paste0("\n Runnging time : ", run.time, " \n"),
+      paste0("Start time    : ", start.time, "\n"),
+      paste0("End time      : ", end.time, " \n"))
+}
+# start.time <- Sys.time(); Sys.sleep(5)
+# end.time   <- Sys.time()
+# runtime_fn(start.time,end.time)
+
+#======================================================================================================#
+# 5. Root Mean Squared Log Error ----
+#======================================================================================================#
+sle_fn <- function(actual, predict){
+  sle <- (log(1 + actual) - log(1 + predict))^2
+  return(sle)
+}
+
+msle_fn <- function(actual, predict){
+  sle   <- (log(1 + actual) - log(1 + predict))^2
+  msle  <- mean(sle)
+  return(msle)
+}
+
+# exp(RMSLE) 는 실제값과예측값의 비율이다.
+# (출처) https://daewonyoon.tistory.com/281
+rmsle_fn <- function(actual, predict){
+  sle   <- (log(1 + actual) - log(1 + predict))^2
+  msle  <- mean(sle)
+  rmsle <- sqrt(mean(sle))
+  return(rmsle)
+}
+
+
+#======================================================================================================#
+# 6. ape, mape, smape ----
+#======================================================================================================#
+ape_fn <- function(predict, actual){
+  
+  # 실제값과 예측값의 개수가 다르면 stop
+  if (length(predict) != length(actual)) stop("difference lengths")
+  
+  # APE 계산
+  ape <- abs( (predict - actual) / actual ) 
+  ape <- as.numeric(ape)
+  
+  return(ape)
+}
+
+mape_fn <- function(predict, actual){
+  
+  # 실제값과 예측값의 개수가 다르면 stop
+  if (length(predict) != length(actual)) stop("difference lengths")
+  
+  # APE 계산
+  ape <- abs( (predict - actual) / actual ) 
+  ape <- as.numeric(ape)
+  
+  # APE의 mean을 계산
+  mape <- mean(ape, na.rm = T)
+  
+  # mape가 1을 초과하게 되면 1을 선택하도록 설정.
+  # => 보통 예측값과 실제값은 비슷하도록 설정되는게 좋은 모델.
+  #    따라서 예측값과 실제값이 많이 벗어나면 좋은 모형이 아니므로, 1보다 커지게됨. 
+  #    즉, mean absolute percentage error = 에러퍼센트 평균이 100%보다 크다는 뜻
+  # => 최대값을 1(100%)로 설정
+  mape <- min(mape, 1)
+  mape <- as.numeric(mape)
+  
+  return(mape)
+}
+
+smape_fn <- function(actual = FALSE, predict = FALSE, data = NULL){
+  # data <- tr_dt
+  if ( is.logical(actual) & is.logical(predict) ){
+    data <- as.data.frame(data)
+    predict <- data[,1]
+    actual  <- data[,2]
+  } 
+  smape <- 100*mean( abs(actual-predict)/(abs(actual)+abs(predict)) )
+  return(smape)
+}
+
+#======================================================================================================#
+# 7. R-square :  ----
+#
+# > lm이 아닌 경우에는 SSE+SSR=SST가 성립하지 않음
+# > (1) SSR/SST
+# > (2) 1- SSE/SST
+# > (3) cor^2
+#======================================================================================================#
+rsq_fn <- function(predict, actual){
+  
+  # 실제값과 예측값의 개수가 다르면 stop
+  if (length(predict) != length(actual)) stop("difference lengths")
+  
+  # 예측값에 NA가 있을 경우(X변수들 중에 NA가 있을 경우), 
+  # 매칭되는 실제값 및 예측값 제거 후 rsq 계산
+  predict <- na.omit(as.numeric(predict))
+  
+  # GBM 같은 경우에는 x가 NA임에도 불구하고 predicton을 해줌
+  # 따라서 이러한 경우를 방지하고자 actual에서도 해당 값을 빼줌
+  if ( !is.null(attr(predict,"na.action")) ) actual <- actual[-attr(predict, "na.action")]
+  
+  # SSE, SSR, SST 계산
+  sse <- sum( (actual  - predict)^2 )
+  ssr <- sum( (predict - mean(actual, na.rm = T))^2 )
+  sst <- sum( (actual  - mean(actual, na.rm = T))^2 )
+  
+  # r-square 계산 : SSR / SST, 1 - SSE / SST, cor^2
+  # OLS처럼 cross term이 0가 아닌 모델인 경우에는 sst != ssr/sst
+  # 하지만 그런 모델에 대해서도 결정계수를 계산해보기 위하여 둘다 계산
+  rsq1 <- ssr/sst
+  rsq1 <- as.numeric(rsq1)
+  
+  rsq2 <- 1 - (sse/sst)
+  rsq2 <- as.numeric(rsq2)
+  
+  cor  <- suppressWarnings(cor(predict, actual, method = "pearson", use = "na.or.complete"))
+  rsq3 <- as.numeric(cor^2)
+  
+  # cross term이 0가 안되고 엄청 크거나 작아져버리는 경우에는 
+  # rsq가 [0,1]에 포함되지 않을 때도 있으므로 
+  # (-inf, 0) 인 경우에는 0으로, (1, inf)인 경우에는 1으로 return
+  rsq1 <- ifelse(rsq1 < 0, 0, ifelse(rsq1 > 1, 1, rsq1))
+  rsq2 <- ifelse(rsq2 < 0, 0, ifelse(rsq2 > 1, 1, rsq2))
+  
+  # cross term이 0인 모델의 경우에는 하나만 return, 아닌 경우에는 모두 return
+  # rsq1와 rsq2는 같은 값이지만, 컴퓨터로 계산할 때 소숫점자리 끝까지 같은 숫자는 아님
+  
+  # if ( abs(rsq1 - rsq2) < 1e-5 ){
+  #   rsq <- rsq1
+  # } else {
+  #   rsq <- list("ssr/sst" = rsq1,
+  #               "1-sse/sst" = rsq2,
+  #               "cor^2" = rsq3)
+  # }
+  
+  rsq <- list("ssr/sst" = rsq1,
+              "1-sse/sst" = rsq2,
+              "cor^2" = rsq3)
+  
+  return(rsq)
+}
+
+
+#======================================================================================================#
+# 8. Describe the data ----
+#======================================================================================================#
+desc_fn <- function(df, trim = 0.1, example.size = 2){
+  # df           <- test_dt
+  # example.size <- 2
+  # trim         <- 0.1
+  
+  require(dplyr)
+  require(psych)
+  require(pbapply)
+  
+  pboptions(type = "timer", style = 3, char = "=")
+  
+  desc_df <- pblapply(1:ncol(df), function(c.i){
+    # c.i <- 3
+    
+    # column
+    if (!is.data.frame(df)){
+      stop('data.frame is needed')
+    } else if (is.data.table(df)){
+      col <- df[[c.i]]
+    } else {
+      col <- df[,c.i]
+    }
+    
+    # 변수명, 변수예시, 개수, unique개수, na개수
+    vari.nm        <- names(df)[c.i]
+    n              <- length(col)
+    n.unique       <- length(unique(col))
+    n.na           <- sum(is.na(col)) + sum(col=="",na.rm=T)
+    
+    # 
+    if ( length(unique(col))<=2*example.size ){
+      example <- paste(as.vector(unique(col)), collapse = ", ")
+    } else {
+      example.head   <- paste(head(unique(col)[order(unique(col))], example.size), collapse = ", ")
+      example.tail.0 <- head(unique(col)[order(unique(col),decreasing=T)], example.size)
+      example.tail   <- paste(example.tail.0[order(example.tail.0)], collapse = ", ")
+      example        <- paste0(example.head,", ... ,", example.tail)
+    }
+    
+    # min, q1, mean, median, q3, max, sd, trimed mean, mad, range, skew, kurt, se
+    if ( is.numeric(col) ){
+      min    <- round(min(col, na.rm = T), 3)
+      q1     <- round(quantile(col, prob = 0.25, na.rm = T), 3)
+      mean   <- round(mean(col, na.rm = T), 3)
+      median <- round(median(col, na.rm = T), 3)
+      q3     <- round(quantile(col, prob = 0.75, na.rm = T), 3)
+      max    <- round(max(col, na.rm = T), 3)
+      sd     <- round(sd(col, na.rm = T), 3)
+      trimed <- round(mean(col, trim = trim, na.rm = T), 3)
+      mad    <- round(mad(col, na.rm = T), 3)
+      range  <- round(diff(range(col, na.rm = T)), 3)
+      skew   <- round(skew(col, na.rm = T), 3)
+      kurt   <- round(kurtosi(col, na.rm = T), 3)
+      se     <- round(sd(col, na.rm = T) / sqrt(sum(!is.na(col))), 3)
+    } else{
+      min    <- ""
+      q1     <- ""
+      mean   <- ""
+      median <- ""
+      q3     <- ""
+      max    <- ""
+      sd     <- ""
+      trimed <- ""
+      mad    <- ""
+      range  <- ""
+      skew   <- ""
+      kurt   <- ""
+      se     <- ""
+    }
+    
+    desc <- data.frame(vari.nm, 
+                       "BLK1" = "|",
+                       example, 
+                       "BLK2" = "|", 
+                       n, n.unique, n.na,
+                       "BLK3" = "|",
+                       min, q1, mean, median, q3, max, 
+                       "BLK4" = "|",
+                       sd, trimed, mad, 
+                       range, skew, kurt, se,
+                       stringsAsFactors = F, row.names = NULL)
+    names(desc)[grep("BLK", names(desc))] <- "|"
+    
+    return(desc)
+  }) %>% do.call(rbind, .)
+  
+  names(desc_df) <- c("VAR","|","Example","|","N","N.Uniq","N.Na","|","Min","Q1","Mean","Median","Q3","Max","|","SD","Trimed","Mad","Range","Skew","Kurt","SE")
+  
+  return(desc_df)
+}
+
+
+#======================================================================================================#
+# 9. 문자형변수의 level이 같은지 확인
+#======================================================================================================#
+equal_level_check_fn <- function(train_df, test_df){
+  
+  tr.cate.vari <- names(which(sapply(train_df, is.character)))
+  te.cate.vari <- names(which(sapply(test_df,  is.character)))
+  
+  # 변수명이 다르면 stop
+  if ( !identical(tr.cate.vari, te.cate.vari) ) stop("categoral variables of train & test are different")
+  # level이 같은지 확인
+  check <- sapply(seq_along(tr.cate.vari), function(c.i){
+    # c.i <- 11
+    tr.levels<-levels(factor(train_df[,tr.cate.vari[c.i]]))
+    te.levels<-levels(factor(test_df [,tr.cate.vari[c.i]]))
+    return(length(setdiff(tr.levels,te.levels))+length(setdiff(te.levels,tr.levels)))
+  })
+  names(check) <- tr.cate.vari
+
+  return(check)
+}
+
+#======================================================================================================#
+# 10. 문자형변수의 level이 unique한지 확인
+#======================================================================================================#
+unique_level_check_fn <- function(train_df){
+  cate.vari <- names(which(sapply(train_df, is.character)))
+  check     <- sapply(train_df[, cate.vari], function(col){
+    # col <- train_df[, cate.vari[1]]
+    level <- levels(factor(col))
+    return(length(level))
+  })
+  return(check)
+}
+
+#======================================================================================================#
+# 11. 문자형변수의 빈도가 1개인지 확인
+#======================================================================================================#
+unique_freq_check_fn <- function(train_df){
+  cate.vari <- names(which(sapply(train_df, is.character)))
+  check     <- sapply(train_df[, cate.vari], function(col){
+    tbl <- table(col)
+    ifelse(sum(tbl <= 1) == 0, F, T)
+  })
+  return(check)
+}
+
+#======================================================================================================#
+# 12. Categorical 변수를 동일하게 나누는 작업
+#======================================================================================================#
+stratified_fn <- function(df, group, size, select = NULL, replace = FALSE, bothSets = FALSE){
+  
+  # df       <- str_ls[[1]]$train_df
+  # group    <- as.character(str_ls[[1]]$x.vars)
+  # size     <- 1
+  # select   <- NULL
+  # replace  <- FALSE
+  # bothSets <- FALSE
+  
+  if (is.null(select)) {
+    df <- df
+  } else {
+    if (is.null(names(select))) stop("'select' must be a named list")
+    if (!all(names(select) %in% names(df)))
+      stop("Please verify your 'select' argument")
+    temp <- sapply(names(select),
+                   function(x) df[[x]] %in% select[[x]])
+    df <- df[rowSums(temp) == length(select), ]
+  }
+  df.interaction <- interaction(df[group], drop = TRUE)
+  df.table <- table(df.interaction)
+  df.split <- split(df, df.interaction)
+  if (length(size) > 1) {
+    if (length(size) != length(df.split))
+      stop("Number of groups is ", length(df.split),
+           " but number of sizes supplied is ", length(size))
+    if (is.null(names(size))) {
+      n <- setNames(size, names(df.split))
+      message(sQuote("size"), " vector entered as:\n\nsize = structure(c(",
+              paste(n, collapse = ", "), "),\n.Names = c(",
+              paste(shQuote(names(n)), collapse = ", "), ")) \n\n")
+    } else {
+      ifelse(all(names(size) %in% names(df.split)),
+             n <- size[names(df.split)],
+             stop("Named vector supplied with names ",
+                  paste(names(size), collapse = ", "),
+                  "\n but the names for the group levels are ",
+                  paste(names(df.split), collapse = ", ")))
+    }
+  } else if (size < 1) {
+    n <- round(df.table * size, digits = 0)
+  } else if (size >= 1) {
+    if (all(df.table >= size) || isTRUE(replace)) {
+      n <- setNames(rep(size, length.out = length(df.split)),
+                    names(df.split))
+    } else {
+      message(
+        "Some groups\n---",
+        paste(names(df.table[df.table < size]), collapse = ", "),
+        "---\ncontain fewer observations",
+        " than desired number of samples.\n",
+        "All observations have been returned from those groups.")
+      n <- c(sapply(df.table[df.table >= size], function(x) x = size),
+             df.table[df.table < size])
+    }
+  }
+  temp <- lapply(
+    names(df.split),
+    function(x) df.split[[x]][sample(df.table[x],
+                                     n[x], replace = replace), ])
+  set1 <- do.call("rbind", temp)
+  
+  if (isTRUE(bothSets)) {
+    set2 <- df[!rownames(df) %in% rownames(set1), ]
+    list(SET1 = set1, SET2 = set2)
+  } else {
+    set1
+  }
+}
+
+#======================================================================================================#
+# 13. 날짜변수인지 확인
+#======================================================================================================#
+is.POSIXct <- function(x) inherits(x, "POSIXct")
+is.POSIXlt <- function(x) inherits(x, "POSIXlt")
+is.POSIXt  <- function(x) inherits(x, "POSIXt")
+is.Date    <- function(x) inherits(x, "Date")
+is.timevar <- function(x){
+  inherits(x, "POSIXct") | inherits(x, "POSIXlt") | inherits(x, "POSIXt") | inherits(x, "Date")
+} 
+
+#======================================================================================================#
+# 14. theme_black
+#======================================================================================================#
+theme_black <- function(base_size = 12, base_family = "") {
+  
+  theme_grey(base_size = base_size, base_family = base_family) %+replace%
+    
+    theme(
+      # Specify axis options
+      axis.line = element_blank(),  
+      axis.text.x = element_text(size = base_size*0.8, color = "white", lineheight = 0.9),  
+      axis.text.y = element_text(size = base_size*0.8, color = "white", lineheight = 0.9),  
+      axis.ticks = element_line(color = "white", size  =  0.2),  
+      axis.title.x = element_text(size = base_size, color = "white", margin = margin(0, 10, 0, 0)),  
+      axis.title.y = element_text(size = base_size, color = "white", angle = 90, margin = margin(0, 10, 0, 0)),  
+      axis.ticks.length = unit(0.3, "lines"),   
+      # Specify legend options
+      legend.background = element_rect(color = NA, fill = "black"),  
+      legend.key = element_rect(color = "white",  fill = "black"),  
+      legend.key.size = unit(1.2, "lines"),  
+      legend.key.height = NULL,  
+      legend.key.width = NULL,      
+      legend.text = element_text(size = base_size*0.8, color = "white"),  
+      legend.title = element_text(size = base_size*0.8, face = "bold", hjust = 0, color = "white"),  
+      legend.position = "right",  
+      legend.text.align = NULL,  
+      legend.title.align = NULL,  
+      legend.direction = "vertical",  
+      legend.box = NULL, 
+      # Specify panel options
+      panel.background = element_rect(fill = "black", color  =  NA),  
+      panel.border = element_rect(fill = NA, color = "white"),  
+      panel.grid.major = element_line(color = "grey35"),  
+      panel.grid.minor = element_line(color = "grey20"),  
+      panel.margin = unit(0.5, "lines"),   
+      # Specify facetting options
+      strip.background = element_rect(fill = "grey30", color = "grey10"),  
+      strip.text.x = element_text(size = base_size*0.8, color = "white"),  
+      strip.text.y = element_text(size = base_size*0.8, color = "white",angle = -90),  
+      # Specify plot options
+      plot.background = element_rect(color = "black", fill = "black"),  
+      plot.title = element_text(size = base_size*1.2, color = "white"),  
+      plot.margin = unit(rep(1, 4), "lines")
+      
+    )
+}
+
+#======================================================================================================#
+# 15. predict function for kmeans ----
+#======================================================================================================#
+predict_kmeans_fn <- function(object, newdata){
+  
+  # kmeans object에서 다음의 값들을 호출
+  centers   <- object$centers # A matrix of cluster centres.
+  n_centers <- nrow(centers)  # cluster size
+  
+  # newdata가 column 한 개인 경우에는 rbind가 되지않으므로 다음과 같이 수정
+  fun.name  <- ifelse(ncol(centers) == 1, "c", "rbind")
+  
+  # center와 newdata의 distance 계산
+  dist_mat  <- eval(parse(text = paste0(fun.name, '(centers, newdata)') ))
+  dist_mat  <- as.matrix(dist(dist_mat))
+  dist_mat  <- dist_mat[-seq(n_centers), seq(n_centers)]  
+  
+  # newdata가 column 한 개인 경우에는 matrix 형태로 나타나지 않고, numeric 형태로 나타남
+  # 이런 경우에는 apply를 사용하지 못하므로 다음과 같이 if문을 이용
+  if ( is.matrix(dist_mat) ){
+    predict.value <- apply(dist_mat, 1, which.min)
+  } else {
+    predict.value <- which.min(dist_mat)
+  }
+  
+  return(predict.value)
+}
+
+#======================================================================================================#
+# 16. 숫자 콤마추가 및 단위계산
+#======================================================================================================#
+unit_fn <- function(num.x){
+  
+  # num.x <- 123456789
+  # num.x <- "as"
+  
+  # 숫자변수가 아니면 stop
+  if ( !is.numeric(num.x) ) stop(paste0("\"", num.x, "\"", " is character"))
+  
+  # 숫자형 변수의 길이
+  len     <- nchar(as.character(num.x))
+  
+  # 콤마가 들어가야하는 개수
+  # if문 : 123456789를 넣으면 ",123,456,789"로 나옴
+  if ( len / 3 == trunc(len / 3) ){
+    n.comma <- trunc(len / 3) - 1
+  } else{
+    n.comma <- trunc(len / 3)
+  }
+  
+  # 숫자를 모두 나누어서 콤마를 넣기위해 반대로 뒤집음
+  rev.x <- unlist(strsplit(as.character(num.x), ""))
+  rev.x <- rev.x[length(rev.x):1]
+  
+  # 콤마를 추가
+  rev.x[3*(1:n.comma)] <- paste0(",", rev.x[3*(1:n.comma)])
+  
+  # 다시 반대로 뒤집음
+  new.x <- rev.x[length(rev.x):1]
+  
+  # 모두 합침
+  new.x <- paste0(new.x, collapse = "")
+  
+  unit.x <- c("일", "십", "백", "천", "만", "십만", "백만", "천만", "억", "십억", "백억", "천억", "조", "십조", "백조", "천조")
+  unit.x <- unit.x[len]
+  
+  result <- c(new.x, unit.x)
+  
+  return(result)
+}
+
+# unit_fn(1123456789111323)
+
+#======================================================================================================#
+# calculation the time
+#======================================================================================================#
+
+# library(hms)
+# 
+# time <- "2020-05-10 00:00:00"
+# strptime(time, "%Y-%m-%d %H:%M:%S") + hms(h=0, m=74, s=0)
+# strptime(time, "%Y-%m-%d %H:%M:%S") + hms(h=1, m=13, s=60)

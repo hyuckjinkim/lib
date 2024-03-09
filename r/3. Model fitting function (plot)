@@ -1,0 +1,75 @@
+model_fit_plot_fn <- function(fit_res_ls){
+  
+  require(ggplot2)
+  
+  # library(MASS); data(anorexia)
+  # data_df  <- anorexia
+  # 
+  # y        <- "Postwt"
+  # x.vars   <- c("Treat", "Prewt")
+  # formula  <- as.formula("y ~ Treat + Prewt")
+  # 
+  # names(data_df)[which(names(data_df) == y)] <- "y"
+  # 
+  # tr.vec   <- sample(1:nrow(data_df), 0.7*nrow(data_df))
+  # train_df <- data_df[tr.vec, ]
+  # test_df  <- data_df[-tr.vec, ]
+  # 
+  # method   <- c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart")
+  # seed.num <- 1
+  # 
+  # fit_res_ls <- model_fit_fn(formula, train_df, test_df, x.vars, y, seed.num = seed.num, list.split.name = "None",
+  #                            method = c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart"))
+  
+  best.pred  <- paste0(fit_res_ls$performance$best.mape.al, ".pred")
+  plot_tr_df <- fit_res_ls$prediction$train[, c("actual", best.pred)]
+  plot_te_df <- fit_res_ls$prediction$test [, c("actual", best.pred)]
+  
+  plot_tr_df$ind <- paste0("Training set (MAPE = ", 
+                           round(fit_res_ls$performance[paste0(fit_res_ls$performance$best.mape.al, ".mape.tr")],3 ), 
+                           ")")
+  plot_te_df$ind <- paste0("Test set (MAPE = ", 
+                           round(fit_res_ls$performance[paste0(fit_res_ls$performance$best.mape.al, ".mape.te")],3 ), 
+                           ")")
+  plot_df        <- rbind(plot_tr_df, plot_te_df)
+  plot_df$ind    <- factor(plot_df$ind, levels = c(plot_tr_df$ind[1], plot_te_df$ind[1]))
+  # plot_long_df <- reshape::melt(plot_df, id.vars = "ind")
+  
+  
+  plt <- ggplot(plot_df, aes(actual, get(names(plot_df)[2]))) +
+    geom_point() +
+    xlim(range(c(plot_df$actual, plot_df$rf.pred))) +
+    ylim(range(c(plot_df$actual, plot_df$rf.pred))) +
+    xlab("ACTUAL") + ylab(paste0("PREDICTION")) +
+    labs(title = toupper(fit_res_ls$performance$best.mape.al)) +
+    geom_abline(intercept = 0, slope = 1, col = 2) +
+    facet_wrap(~ind)
+  
+  return(plt)
+}
+
+# library(MASS); data(anorexia)
+# data_df  <- anorexia
+# 
+# y        <- "Postwt"
+# x.vars   <- c("Treat", "Prewt")
+# formula  <- as.formula("y ~ Treat + Prewt")
+# 
+# names(data_df)[which(names(data_df) == y)] <- "y"
+# 
+# tr.vec   <- sample(1:nrow(data_df), 0.7*nrow(data_df))
+# train_df <- data_df[tr.vec, ]
+# test_df  <- data_df[-tr.vec, ]
+# 
+# method   <- c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart")
+# seed.num <- 1
+# 
+# source("H:/STUDY/R/model_fit_fn.R", encoding = "UTF-8")
+# fit_res_ls <- model_fit_fn(formula, train_df, test_df, x.vars, y, seed.num = seed.num, list.split.name = "None",
+#                            method = c("lm", "lasso", "ridge", "en", "gbm", "pls", "pcr", "rf", "bag", "rpart"))
+# 
+# plt <- model_fit_plot_fn(fit_res_ls)
+# plt
+
+
+
