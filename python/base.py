@@ -77,3 +77,27 @@ def gc_collect_all(verbose=True):
         else:
             if verbose:
                 print('gc_collect: {}'.format(gc_collected))
+                
+def str2bool(v) -> bool:
+    """
+    argparse 사용 시, type=bool로 하게되면 string으로 읽어들이는 문제를 해결하기위한 사용자정의함수.
+    
+    Args:
+        - v: input argument.
+        
+    Raises:
+        - input argument가 아래에 해당되지 않는 경우
+            - True: ('yes', 'true', 't', 'y', '1')
+            - False: ('no', 'false', 'f', 'n', '0')
+    
+    Returns:
+        - bool: input argument가 가리키는 True/False 값.
+    """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
