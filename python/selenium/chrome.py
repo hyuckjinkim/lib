@@ -52,3 +52,14 @@ class BaseChromeWebdriver:
             condition = EC.presence_of_element_located
             elements = wait.until(condition((By.CSS_SELECTOR, selector)))
         return elements
+    
+    def find_element_by_css_selector_with_clickable(self,
+                                                    selector: str,
+                                                    timeout: int) -> selenium.webdriver.remote.webelement.WebElement:
+        if timeout is None:
+            elements = self.driver.find_element(By.CSS_SELECTOR, selector)
+        else:
+            wait = WebDriverWait(self.driver, timeout)
+            condition = EC.element_to_be_clickable
+            elements = wait.until(condition((By.CSS_SELECTOR, selector)))
+        return elements
