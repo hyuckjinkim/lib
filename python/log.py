@@ -67,7 +67,7 @@ def get_logger(logger_name: str = None,
             save_dir = os.path.join(*save_path.split('/')[:-1])
             os.makedirs(save_dir, exist_ok=True)
         # log 파일 삭제
-        #os.system(f"rm -rf {save_path}")
+        os.system(f"rm -rf {save_path}")
     
     if level=='INFO':
         logger_level = logging.INFO
