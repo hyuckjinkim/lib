@@ -18,6 +18,7 @@ import logging
 
 class PrintStream(StringIO):
     """Logging 사용 시, 표준 출력 캡처를 위한 클래스."""
+    
     def add_logger(self, logger: logging.RootLogger) -> None:
         """
         self 객체에 logger를 추가한다.
@@ -31,12 +32,14 @@ class PrintStream(StringIO):
         self.logger = logger
     
     def write(self, buf) -> None:
-        """print 출력을 로그에 추가한다."""
-        self.logger.info(buf.strip())
+        """print 출력을 로그에 추가한다. 빈 줄은 로깅하지 않는다."""
+        # buf.strip()의 결과가 빈 문자열이 아닐 때만 로깅을 수행
+        if (buf.strip()!='') | (buf==''):
+            self.logger.info(buf.strip())
 
 def get_logger(logger_name: str = None,
                module_name: str = None,
-               level: str = 'DEBUG',
+               level: str = 'INFO',
                flag: str|None = None,
                save_path: str = None) -> logging.Logger:
     """
@@ -45,7 +48,8 @@ def get_logger(logger_name: str = None,
     Args:
         logger_name (str, optional): logger의 name. default=None.
         module_name (str, optional): module의 name. default=None.
-        flag (str | None, optional): 로거 유형. default=None.
+        level (str, optional): logger의 level. default='INFO'.
+        flag (str | None, optional): logger의 유형. default=None.
         save_path (str, optional): 출력물의 저장위치. default=None.
     
     Raises:
@@ -63,11 +67,9 @@ def get_logger(logger_name: str = None,
     if save_path is not None:
         assert save_path.split('/')[-1].find('.log')>0, "The 'save_path' must be a string ending with '.log'."
         # log 폴더 생성
-        if not os.path.exists(save_path):
+        if not os.path.exists('/'.join(save_path.split('/')[:-1])):
             save_dir = os.path.join(*save_path.split('/')[:-1])
             os.makedirs(save_dir, exist_ok=True)
-        # log 파일 삭제
-        os.system(f"rm -rf {save_path}")
     
     if level=='INFO':
         logger_level = logging.INFO
@@ -95,7 +97,7 @@ def get_logger(logger_name: str = None,
     # 핸들러 추가
     handlers = [logging.StreamHandler()]
     if save_path is not None:
-        handler = logging.FileHandler(filename=save_path)
+        handler = logging.FileHandler(filename=save_path, mode='w')
         handlers.append(handler)
 
     # 핸들러 설정

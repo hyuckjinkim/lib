@@ -16,15 +16,18 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.remote.webelement import WebElement
+
 from webdriver_manager.chrome import ChromeDriverManager
 
-from selenium.webdriver.remote.webelement import WebElement
+from seleniumwire import webdriver as wired_webdriver
 
 class BaseChromeWebdriver:
     """Selenium Chrome Webdrive를 초기세팅하는 클래스."""
     def __init__(self,
+                 wired: bool = False,
                  chromedriver_path: str = None,
-                 set_options: bool = False,
+                 headless: bool = False,
                  timeout: int = None) -> None:
         """
         BaseChromeWebdriver의 생성자로, Selenium Chrome Webdrive를 초기세팅한다.
@@ -39,8 +42,9 @@ class BaseChromeWebdriver:
             * 요소에 우클릭 > 복사 > selector 복사를 통해 selector를 얻는다
         
         Args:
+            wired (bool, optional): selenium-wire를 사용 할 것인지 여부. default=False.
             chromedrive_path (str, optional): 크롬드라이버가 설치된 경로. None인 경우 `ChromeDriverManager().install()`을 통해서 설치한다. default=None.
-            set_options (bool, optional): 기본 options를 세팅할지 여부. default=False.
+            headless (bool, optional): 기본 options를 세팅 시, headless를 설정할지 여부. default=False.
             timeout (int, optional): timeout을 설정할지 여부. None이 아닌 경우 `WebDriverWait(driver, timeout).until(EC.presence_of_element_located(By.CSS_SELECTOR, selector))`의 형태로 설정한다. default=None.
             
         Returns:
@@ -58,16 +62,20 @@ class BaseChromeWebdriver:
             chromedriver_path = ChromeDriverManager().install()
             # !cp {chromedriver_path} 'tools/chromedriver'
         
-        options = self._get_options() if set_options else None
+        options = self._get_options(headless)
         service = ChromeService(chromedriver_path)
-        self.driver = webdriver.Chrome(service=service, options=options, keep_alive=False)
+        if wired:
+            self.driver = wired_webdriver.Chrome(service=service, options=options, keep_alive=False)
+        else:
+            self.driver = webdriver.Chrome(service=service, options=options, keep_alive=False)
         #self.driver.implicitly_wait(10)
     
-    def _get_options(self) -> selenium.webdriver.chrome.options.Options:
+    def _get_options(self, headless: bool = True) -> selenium.webdriver.chrome.options.Options:
         """기본 options를 세팅한다."""
         # 압축해제한 웹드라이버의 경로와 파일명 지정
         options = webdriver.ChromeOptions()
-        options.add_argument('headless')
+        if headless:
+            options.add_argument('headless')
         options.add_argument('window-size=1920x1080')
         options.add_argument("disable-gpu")
         options.page_load_strategy = 'none'
@@ -90,7 +98,13 @@ class BaseChromeWebdriver:
         self.driver.close()
         
     def scroll_down(self):
+        # (1) java script 기반의 스크롤 다운
         self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+        # (2) END 키를 통한 스크롤 다운
+        body_elements = self.find_element_by_css_selector('body')
+        for _ in range(10):
+            body_elements.send_keys(Keys.END)
     
     def find_element_by_css_selector(self,
                                      selector: str,
