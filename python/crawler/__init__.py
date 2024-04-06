@@ -2,7 +2,6 @@ from abc import ABCMeta,abstractmethod
 
 import requests
 
-
 class BaseExtractor(metaclass=ABCMeta):
     """크롤링을 위한 추상화 클래스"""
     

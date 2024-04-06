@@ -1,15 +1,16 @@
 import tableauserverclient as TSC
 import pandas as pd
 
-# # config를 불러와야함
-# tableau_config = config.get_config(config_file_name="tableau.ini", section="TableauServer")
-# TABLEAU_ACCESS_TOKEN_ID = tableau_config["access_key"]
-# TABLEAU_ACCESS_TOKEN_PW = tableau_config["secret_key"]
-# SERVER_URL = tableau_config["server_url"]
-# SITE_ID = tableau_config["site_id"]
+from data_lib import config
+tableau_config = config.get_config(config_file_name="tableau.ini", section="TableauServer")
+TABLEAU_ACCESS_TOKEN_ID = tableau_config["access_key"]
+TABLEAU_ACCESS_TOKEN_PW = tableau_config["secret_key"]
+SERVER_URL = tableau_config["server_url"]
+SITE_ID = tableau_config["site_id"]
 
 def get_server() -> TSC.Server:
-    """태블로서버 서버 객체를 가져온다.
+    """
+    태블로서버 서버 객체를 가져온다.
     
     Returns:
         tableauserverclient.Server: 태블로 서버 객체
@@ -17,7 +18,8 @@ def get_server() -> TSC.Server:
     return TSC.Server(SERVER_URL, use_server_version=True)
     
 def get_auth() -> TSC.PersonalAccessTokenAuth:
-    """태블로서버 인증 객체를 가져온다.
+    """
+    태블로서버 인증 객체를 가져온다.
     
     Returns:
         tableauserverclient.PersonalAccessTokenAuth: 태블로 인증 객체
@@ -25,7 +27,8 @@ def get_auth() -> TSC.PersonalAccessTokenAuth:
     return TSC.PersonalAccessTokenAuth(TABLEAU_ACCESS_TOKEN_ID, TABLEAU_ACCESS_TOKEN_PW, site_id=SITE_ID)
 
 def get_request_options(pagesize: int = 1000) -> TSC.RequestOptions:
-    """태블로서버 Request Option에 대한 객체를 가져온다.
+    """
+    태블로서버 Request Option에 대한 객체를 가져온다.
     
     Args:
         pagesize (int, optional): 태블로서버에서 가져오는 페이지 사이즈. default=1000 (최대 페이지 크기).
@@ -36,7 +39,8 @@ def get_request_options(pagesize: int = 1000) -> TSC.RequestOptions:
     return TSC.RequestOptions(pagesize=pagesize)
 
 def get_datasources() -> pd.DataFrame:
-    """태블로서버에 올라가있는 모든 데이터원본을 가져온다.
+    """
+    태블로서버에 올라가있는 모든 데이터원본을 가져온다.
     
     Returns:
         pandas.DataFrame: 태블로서버의 모든 데이터원본에 대한 데이터프레임.
@@ -60,7 +64,8 @@ def get_datasources() -> pd.DataFrame:
     return datasource_data
 
 def datasource_refresh(source_names: list, verbose: bool = True) -> None:
-    """태블로 원본데이터 새로고침.
+    """
+    태블로 원본데이터 새로고침.
     
     Args:
         source_names (list): 원본데이터 이름들로 작성된 리스트.

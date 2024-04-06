@@ -27,12 +27,11 @@ def get_config(config_file_name : str, section: str = None, key: str = None) -> 
         section이 입력되지 않거나 section까지만 입력되는 경우:  str
         key까지 입력되는 경우: configparser
     """
-
+    
+    current_folder_path = _get_current_file_path()
+    
     config = ConfigParser()
-    config.read(config_file_name)
-    # # lib.python을 pip install해서 가져오는 경우
-    # current_folder_path = _get_current_file_path()
-    # config.read(f'{current_folder_path}/{config_file_name}')
+    config.read(f'{current_folder_path}/{config_file_name}')
     
     # 입력된 section,key 기준으로 마지막 level까지 return
     if (section is None) and (key is None):

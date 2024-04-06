@@ -1,3 +1,15 @@
+"""
+알림과 관련된 함수와 클래스를 제공한다.
+
+함수 목록.
+1. ``
+2. ``
+"""
+
+# root경로 추가
+import os, sys
+sys.path.append(os.path.abspath(''))
+
 from discord import SyncWebhook
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -5,8 +17,18 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 import ntpath
 
+from lib.python.config import get_config
+
+SENDER_EMAIL = get_config(config_file_name="common.ini", section="meta", key="google_id")
+ses_config = get_config(config_file_name="aws.ini", section="SES")
+SMTP_ID = ses_config["access_key"]
+SMTP_PW = ses_config["secret_key"]
+SMTP_SERVER = ses_config["server"]
+SMTP_PORT = ses_config["port"]
+
 def notify_to_discord(discord_webhook_url: str, msg: str) -> None:
-    """디스코드에 알림을 보낸다.
+    """
+    디스코드에 알림을 보낸다.
 
     Args:
         discord_webhook_url (str): 원하는 디스코드 채널의 webhook url
@@ -20,13 +42,9 @@ def notify_to_discord(discord_webhook_url: str, msg: str) -> None:
         print(e)
         print("디스코드 메시지 발송에 문제가 생겼습니다.")
 
-def send_email(to: list,
-               subject: str,
-               html_message_body: str,
-               cc: list = None,
-               attach_files: list = None,
-               ses_config = None) -> None:
-    """이메일을 보낸다.
+def send_email(to: list, subject: str, html_message_body: str, cc: list = None, attach_files: list = None) -> None:
+    """
+    이메일을 보낸다.
 
     Args:
         to (list) : 이메일 수신자
@@ -35,12 +53,6 @@ def send_email(to: list,
         html_message_body (str): 본문으로, html 형식으로 작성가능함
         attach_files (list): 메세지에 첨부할 엑셀 파일 경로 리스트
     """
-    
-    SENDER_EMAIL = ses_config["email"]
-    SMTP_ID = ses_config["access_key"]
-    SMTP_PW = ses_config["secret_key"]
-    SMTP_SERVER = ses_config["server"]
-    SMTP_PORT = ses_config["port"]
 
     # 메세지 메타데이터
     msg = MIMEMultipart()
@@ -72,3 +84,4 @@ def send_email(to: list,
     for recipient in to:
         s.sendmail(msg['From'], recipient, msg.as_string())
         print(f"* Sended to {recipient}")
+
