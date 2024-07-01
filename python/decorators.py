@@ -7,6 +7,12 @@ def retry_with_delay(retry_count: int = 3,
                      verbose: int = 2,
                      verbose_period: int = 1):
     
+    if retry_count==-1:
+        retry_count = np.inf
+        message_fmt = "Retry {}"
+    else:
+        message_fmt = "Retry {}/{}"
+    
     if isinstance(delay_seconds,list|tuple):
         if len(delay_seconds)!=2:
             raise ValueError('If delay_seconds is tuple or list, the length must be 2.')
@@ -16,19 +22,24 @@ def retry_with_delay(retry_count: int = 3,
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            for attempt in range(retry_count):
+            attempt = 0
+            while attempt < retry_count:
                 try:
                     # 함수 호출
                     return func(*args, **kwargs)
                 except Exception as e:
                     # progress
                     if (attempt+1) % verbose_period == 0:
+                        message = message_fmt.format(attempt+1, retry_count)
                         if verbose==0:
                             pass
                         elif verbose==1:
-                            print(f"Retry {attempt + 1}/{retry_count}")
+                            print(message)
                         elif verbose>1:
-                            print(f"Retry {attempt + 1}/{retry_count}, Error: {e}")
+                            print(message + f", Error: {e}")
+                    
+                    attempt += 1
+
                     # 지정된 시간만큼 대기
                     time.sleep(delay_seconds)
             # 모든 재시도 실패 후 예외를 다시 발생

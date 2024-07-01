@@ -65,6 +65,8 @@ def get_logger(logger_name: str = None,
     assert level in ['DEBUG','INFO'], "level must be one of ['DEBUG','INFO']"
     assert flag in ['deco',None], "flag must be one of ['deco',None]."
     if save_path is not None:
+        if os.path.exists(save_path):
+            os.remove(save_path)
         assert save_path.split('/')[-1].find('.log')>0, "The 'save_path' must be a string ending with '.log'."
         # log 폴더 생성
         if not os.path.exists('/'.join(save_path.split('/')[:-1])):
@@ -97,7 +99,7 @@ def get_logger(logger_name: str = None,
     # 핸들러 추가
     handlers = [logging.StreamHandler()]
     if save_path is not None:
-        handler = logging.FileHandler(filename=save_path, mode='w')
+        handler = logging.FileHandler(filename=save_path, mode='w', encoding='utf-8')
         handlers.append(handler)
 
     # 핸들러 설정
