@@ -6,6 +6,25 @@ import torch
 import argparse
 import numpy as np
 
+class EncoderTree(nn.Module):
+    def __init__(self, in_planes,  num_levels, kernel_size, dropout, groups, hidden_size, INN):
+        super().__init__()
+        self.levels=num_levels
+        self.SCINet_Tree = SCINet_Tree(
+            in_planes = in_planes,
+            current_level = num_levels-1,
+            kernel_size = kernel_size,
+            dropout =dropout ,
+            groups = groups,
+            hidden_size = hidden_size,
+            INN = INN)
+        
+    def forward(self, x):
+
+        x= self.SCINet_Tree(x)
+
+        return x
+
 class Splitting(nn.Module):
     def __init__(self):
         super(Splitting, self).__init__()
@@ -19,7 +38,6 @@ class Splitting(nn.Module):
     def forward(self, x):
         '''Returns the odd and even part'''
         return (self.even(x), self.odd(x))
-
 
 class Interactor(nn.Module):
     def __init__(self, in_planes, splitting=True,
@@ -148,7 +166,6 @@ class SCINet_Tree(nn.Module):
         super().__init__()
         self.current_level = current_level
 
-
         self.workingblock = LevelSCINet(
             in_planes = in_planes,
             kernel_size = kernel_size,
@@ -183,25 +200,6 @@ class SCINet_Tree(nn.Module):
             return self.zip_up_the_pants(x_even_update, x_odd_update)
         else:
             return self.zip_up_the_pants(self.SCINet_Tree_even(x_even_update), self.SCINet_Tree_odd(x_odd_update))
-
-class EncoderTree(nn.Module):
-    def __init__(self, in_planes,  num_levels, kernel_size, dropout, groups, hidden_size, INN):
-        super().__init__()
-        self.levels=num_levels
-        self.SCINet_Tree = SCINet_Tree(
-            in_planes = in_planes,
-            current_level = num_levels-1,
-            kernel_size = kernel_size,
-            dropout =dropout ,
-            groups = groups,
-            hidden_size = hidden_size,
-            INN = INN)
-        
-    def forward(self, x):
-
-        x= self.SCINet_Tree(x)
-
-        return x
 
 class SCINet(nn.Module):
     def __init__(self, output_len, input_len, input_dim = 9, hid_size = 1, num_stacks = 1,
@@ -321,6 +319,7 @@ class SCINet(nn.Module):
         return signal
 
     def forward(self, x):
+        print(self.input_len, self.num_levels)
         assert self.input_len % (np.power(2, self.num_levels)) == 0 # evenly divided the input length into two parts. (e.g., 32 -> 16 -> 8 -> 4 for 3 levels)
         if self.pe:
             pe = self.get_position_encoding(x)
