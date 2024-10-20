@@ -91,16 +91,15 @@ class EarlyStopping:
 #     return ret_seq
         
 def train(
-    model, optimizer, train_loader, valid_loader, epochs,
-    early_stopping, early_stopping_patience, early_stopping_verbose=False,
-    device='cpu', scheduler=None, metric_period=1, 
-    verbose=True, print_shape=False, save_model_path = './mc/best_model.pt',
-    #transform_y='identity'
+    model, train_loader, val_loader, epochs,
+    optimizer, criterion, scheduler=None, 
+    early_stopping=False, early_stopping_patience=10, early_stopping_verbose=False,
+    device='cpu', metric_period=1, 
+    verbose=True, save_model_path = './mc/best_model.pt',
+    custom_metric=None,
 ):
     assert isinstance(early_stopping,bool), \
         "early_stopping must by type bool"
-    assert transform_y in ['identity','log','sqrt'], \
-        "transform_y must be one of ['identity','log','sqrt']"
     
     es = EarlyStopping(
         patience=early_stopping_patience,
@@ -109,13 +108,12 @@ def train(
     )
     
     model.to(device)
-    criterion = nn.L1Loss().to(device)
-    #criterion = nn.MSELoss().to(device)
 
-    best_loss  = 999999999
+    best_loss  = float('inf')
+    best_loss_org = float('inf')
     best_epoch = 1
     best_model = None
-    is_best    = np.nan
+    is_best    = None
     
     start_time = time.time()
     epoch_s = time.time()
@@ -123,6 +121,7 @@ def train(
         
         model.train()
         train_loss = []
+        train_custom = []
         for X, Y in iter(train_loader):
 
             X = X.float().to(device)
@@ -130,41 +129,28 @@ def train(
 
             optimizer.zero_grad()
             output = model(X).float()
-            
-            #Y = seq2list_cuda(Y,device)
-            #output = seq2list_cuda(output,device)
-            
-            #if transform_y=='log':
-            #    output = torch.exp(output)
-            #    Y      = torch.exp(Y)
-            #elif transform_y=='sqrt':
-            #    output = output**2
-            #    Y      = Y**2
-                
-            if print_shape:
-                    if epoch==1:
-                        print(output.shape,Y.shape) # torch.Size([16, 1]) torch.Size([16, 1])
-                        print(output[:2],Y[:2])
-            
+
             loss = criterion(output, Y)
-            #loss = torch.sqrt(loss) # MSE -> RMSE
-            
-            loss.backward() # Getting gradients
+            loss.backward()  # Getting gradients
             optimizer.step() # Updating parameters
 
             train_loss.append(loss.item())
-
-        valid_loss = validation(model, valid_loader, criterion, device) #transform_y
+            if custom_metric is not None:
+                custom = custom_metric(output, Y)
+                train_custom.append(custom.item())
+            
+        val_loss, val_custom = validation(model, val_loader, criterion, device, custom_metric)
 
         epoch_e = time.time()
             
         if scheduler is not None:
-            scheduler.step(valid_loss)
+            scheduler.step(val_loss)
 
         # update the best epoch & best loss
-        if (best_loss > valid_loss) | (epoch==1):
+        if (best_loss > val_loss) | (epoch==1):
             best_epoch = epoch
-            best_loss = valid_loss
+            best_loss = val_loss
+            best_custom = val_custom
             best_model = model
             is_best = 1
             torch.save(best_model.state_dict(), save_model_path)
@@ -172,83 +158,121 @@ def train(
             is_best = 0
             
         # 결과물 printing
-        if (verbose) & (epoch % metric_period == 0):
+        if ((verbose) & (epoch % metric_period == 0)) | (epoch==epochs):
             mark = '*' if is_best else ' '
             epoch_str = str(epoch).zfill(len(str(epochs)))
-            progress = '{}[{}/{}] tr_loss: {:.5f}, val_loss: {:.5f}, best_epoch: {}, elapsed: {:.2f}s, total: {:.2f}s, remaining: {:.2f}s'\
-                .format(
-                    mark,
-                    epoch_str,
-                    epochs,
-                    np.mean(train_loss),
-                    valid_loss,
-                    best_epoch,
-                    epoch_e-epoch_s,
-                    epoch_e-start_time,
-                    (epoch_e-epoch_s)*(epochs-epoch)/metric_period,
-                )
+            
+            if custom_metric is None:
+                progress = '{}[{}/{}] loss: {:.4f}, val_loss: {:.4f}, best: {:.4f}({}) | elapsed: {:.1f}s, total: {:.1f}s, remaining: {:.1f}s'\
+                    .format(
+                        mark, epoch_str, epochs,
+                        np.mean(train_loss), val_loss, best_loss, best_epoch,
+                        epoch_e-epoch_s, epoch_e-start_time, (epoch_e-epoch_s)*(epochs-epoch)/metric_period,
+                    )
+            else:
+                progress = '{}[{}/{}] loss: {:.4f}, val_loss: {:.4f}, best: {:.4f}({}) | custom: {:.4f}, val_custom: {:.4f}, best: {:.4f} | elapsed: {:.1f}s, total: {:.1f}s, remaining: {:.1f}s'\
+                    .format(
+                        mark, epoch_str, epochs,
+                        np.mean(train_loss), val_loss, best_loss, best_epoch,
+                        np.mean(train_custom), val_custom, best_custom,
+                        epoch_e-epoch_s, epoch_e-start_time, (epoch_e-epoch_s)*(epochs-epoch)/metric_period,
+                    )
             epoch_s = time.time()
             print(progress)
 
         # early stopping 여부를 체크. 현재 과적합 상황 추적
         if early_stopping:
-            es(valid_loss, model)
+            es(val_loss, model)
             if es.early_stop:
+                mark = '*' if is_best else ' '
+                epoch_str = str(epoch).zfill(len(str(epochs)))
+                
+                if custom_metric is None:
+                    progress = '{}[{}/{}] loss: {:.4f}, val_loss: {:.4f}, best: {:.4f}({}) | elapsed: {:.1f}s, total: {:.1f}s, remaining: {:.1f}s'\
+                        .format(
+                            mark, epoch_str, epochs,
+                            np.mean(train_loss), val_loss, best_loss, best_epoch,
+                            epoch_e-epoch_s, epoch_e-start_time, (epoch_e-epoch_s)*(epochs-epoch)/metric_period,
+                        )
+                else:
+                    progress = '{}[{}/{}] loss: {:.4f}, val_loss: {:.4f}, best: {:.4f}({}) | custom: {:.4f}, val_custom: {:.4f}, best: {:.4f} | elapsed: {:.1f}s, total: {:.1f}s, remaining: {:.1f}s'\
+                        .format(
+                            mark, epoch_str, epochs,
+                            np.mean(train_loss), val_loss, best_loss, best_epoch,
+                            np.mean(train_custom), val_custom, best_custom,
+                            epoch_e-epoch_s, epoch_e-start_time, (epoch_e-epoch_s)*(epochs-epoch)/metric_period,
+                        )
+                epoch_s = time.time()
+                print('< Early Stopping Activated >')
+                print(progress)
                 break
 
     return best_model
 
-def validation(model, valid_loader, criterion, device): #transform_y
+def validation(model, val_loader, criterion, device, custom_metric=None):
     model.eval()
-    valid_loss = []
+    val_loss = []
+    val_custom = []
     with torch.no_grad():
-        for X, Y in iter(valid_loader):
+        for X, Y in iter(val_loader):
             X = X.float().to(device)
             Y = Y.float().to(device)
             
             output = model(X).float()
-            
-            #Y = seq2list_cuda(Y,device)
-            #output = seq2list_cuda(output,device)
-            
-            #if transform_y=='log':
-            #    output = torch.exp(output)
-            #    Y      = torch.exp(Y)
-            #elif transform_y=='sqrt':
-            #    output = output**2
-            #    Y      = Y**2
-            
             loss = criterion(output, Y)
-            #loss = torch.sqrt(loss) # MSE -> RMSE
+            val_loss.append(loss.item())
 
-            valid_loss.append(loss.item())
+            if custom_metric is not None:
+                custom = custom_metric(output, Y)
+                val_custom.append(custom.item())
 
-    return np.mean(valid_loss)
+    if custom_metric is not None:
+        return np.mean(val_loss), np.mean(val_custom)
+    else:
+        return np.mean(val_loss), np.mean(val_loss)
 
-def predict(best_model,loader,device): #transform_y
-    best_model.to(device)
-    best_model.eval()
+def predict(model, loader, device, inverse_transform=None):
+    model.to(device)
+    model.eval()
     
     true_list = []
     pred_list = []
     with torch.no_grad():
-        for data,label in iter(loader):
-            data = data.float().to(device)
+        for X, Y in iter(loader):
+            X = X.float().to(device)
 
-            output = best_model(data).cpu().numpy().tolist()
-            label  = label.cpu().numpy().tolist()
+            output = model(X)
+            if inverse_transform is not None:
+                output = inverse_transform(output)
+            output = output.cpu().numpy().tolist()
 
-            #if transform_y=='log':
-            #    output = np.exp(output).tolist()
-            #    label  = np.exp(label).tolist()
-            #elif transform_y=='sqrt':
-            #    output = np.square(output).tolist()
-            #    label  = np.square(label).tolist()
+            if inverse_transform is not None:
+                Y  = inverse_transform(Y)
+            Y = Y.cpu().numpy().tolist()
 
-            true_list += label
+            true_list += Y
             pred_list += output
 
     return true_list, pred_list
+
+def inference(model, loader, device, inverse_transform=None):
+    model.to(device)
+    model.eval()
+    
+    true_list = []
+    pred_list = []
+    with torch.no_grad():
+        for X in iter(loader):
+            X = X.float().to(device)
+
+            output = model(X)
+            if inverse_transform is not None:
+                output = inverse_transform(output)
+            output = output.cpu().numpy().tolist()
+
+            pred_list += output
+
+    return pred_list
 
 
 # #-------------------------------------------------------------------------------------------#

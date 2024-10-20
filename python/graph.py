@@ -29,8 +29,9 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import seaborn as sns
 
-FONT_DIR = 'tools/NanumFont'
-KOREAN_FONT_PATH = 'tools/NanumFont/NanumGothic.ttf'
+GIT_DIR = 'G:/My Drive/Storage/Github/hyuckjinkim'
+FONT_DIR = os.path.join(GIT_DIR, 'tools/NanumFont')
+KOREAN_FONT_PATH = os.path.join(GIT_DIR, 'tools/NanumFont/NanumGothic.ttf')
 
 class MatplotlibFontManager:
     """
@@ -38,7 +39,7 @@ class MatplotlibFontManager:
     
     예시
     ```python
-    from domains.utils.visualization import MatplotlibFontManager
+    from lib.python.graph import MatplotlibFontManager
     fm = MatplotlibFontManager()
     fm.set_korean_font(check=False)
     ```
@@ -132,16 +133,16 @@ def actual_prediction_scatterplot(y_true: list, y_pred: list, title: str = None)
         rmse = np.mean((y_true-y_pred)**2)**0.5
         title = 'RMSE={:.3f}'.format(rmse)
     
-    offset = 0.05
-    xylim = (np.min([y_true,y_pred])*(1-offset),np.max([y_true,y_pred])*(1+offset))
+    #offset = 0.05
+    #xylim = (np.min([y_true,y_pred])*(1-offset),np.max([y_true,y_pred])*(1+offset))
     
     plt.figure(figsize=(15,7))
     sns.scatterplot(x=y_true,y=y_pred)
     abline(0,1)
     plt.xlabel('Actual')
     plt.ylabel('Prediction')
-    plt.xlim(xylim)
-    plt.ylim(xylim)
+    #plt.xlim(xylim)
+    #plt.ylim(xylim)
     plt.grid()
     plt.title(title)
     plt.show()
