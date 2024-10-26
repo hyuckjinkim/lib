@@ -105,6 +105,7 @@ def delete_file(file_path: str) -> tuple:
         return file_path, False
 
 def delete_files_with_pattern(pattern: str,
+                              root_dir: str = None,
                               return_file_status: bool = False,
                               max_workers: int = os.cpu_count()) -> None | dict[list]:
     """
@@ -121,6 +122,9 @@ def delete_files_with_pattern(pattern: str,
     Examples:
         ```file_status = delete_files_with_pattern(pattern='./**/._*', return_file_status=True)```
     """
+
+    if root_dir is not None:
+        pattern = os.path.join(root_dir, pattern)
 
     # 1. find files to delete
     start_time = datetime.datetime.now()
