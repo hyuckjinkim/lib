@@ -2,7 +2,8 @@
 # Example: lib/delete_macos_dotfiles.sh
 
 # set root_dir and pattern
-root_dir='/d/Github/hyuckjinkim'
+#root_dir='/g/My Drive/Storage/Github/hyuckjinkim'
+root_dir='/g'
 pattern='._*'
 
 # start time
@@ -62,7 +63,7 @@ echo "> End Time : $end_time"
 
 # elapsed time
 elapsed_seconds=$((end_seconds - start_seconds))
-elapsed_minutes=$(echo "scale=2; $elapsed_seconds / 60" | bc)
+elapsed_minutes=$(awk "BEGIN {printf \"%.2f\", $elapsed_seconds / 60}")
 echo "> Elapsed Time: $elapsed_minutes minutes"
 
 # completed
