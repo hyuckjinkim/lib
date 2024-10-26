@@ -9,4 +9,4 @@ if __name__=="__main__":
     sys.path.append(os.path.abspath(''))
 
     from lib.python.filesystem_utils import delete_files_with_pattern
-    delete_files_with_pattern(pattern='./**/._*', return_file_status=True)
+    delete_files_with_pattern(pattern='./**/._*', root_dir='g:/My Drive', return_file_status=True)
