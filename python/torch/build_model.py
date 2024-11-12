@@ -1,5 +1,6 @@
 # https://jimmy-ai.tistory.com/342
 # https://github.com/Bjarten/early-stopping-pytorch/blob/master/pytorchtools.py
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -98,8 +99,8 @@ def train(
     verbose=True, save_model_path = './mc/best_model.pt',
     custom_metric=None,
 ):
-    assert isinstance(early_stopping,bool), \
-        "early_stopping must by type bool"
+    os.makedirs(os.path.dirname(save_model_path), exist_ok=True)
+    assert isinstance(early_stopping,bool), "early_stopping must by type bool"
     
     es = EarlyStopping(
         patience=early_stopping_patience,
@@ -125,10 +126,10 @@ def train(
         for X, Y in iter(train_loader):
 
             X = X.float().to(device)
-            Y = Y.float().to(device)
+            Y = Y.to(device)
 
             optimizer.zero_grad()
-            output = model(X).float()
+            output = model(X)
 
             loss = criterion(output, Y)
             loss.backward()  # Getting gradients
@@ -216,9 +217,9 @@ def validation(model, val_loader, criterion, device, custom_metric=None):
     with torch.no_grad():
         for X, Y in iter(val_loader):
             X = X.float().to(device)
-            Y = Y.float().to(device)
+            Y = Y.to(device)
             
-            output = model(X).float()
+            output = model(X)
             loss = criterion(output, Y)
             val_loss.append(loss.item())
 
