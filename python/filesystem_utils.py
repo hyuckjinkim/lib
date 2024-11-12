@@ -189,3 +189,18 @@ def delete_files_with_pattern(pattern: str,
         return file_status
     else:
         return {}
+
+def load_from_google_drive(file_id: str):
+    """
+    Google Drive 다운로드 링크로 부터 파일을 다운로드 받는다.
+
+    참조: https://dacon.io/competitions/official/235862/codeshare/4059
+
+    Args:
+        file_id (str): Google Drive 다운로드 링크의 파일 ID. 링크 URL 주소가 https://drive.google.com/file/d/abcdefgABCDEFG1234567/view와 같다면, file_id='abcdefgABCDEFG1234567'. 
+
+    Returns:
+        data/train.csv, data/test.csv, data/sample_submission.csv와 같이 다운로드 받는다.
+    """
+    from gdrivedataset import loader
+    return loader.load_from_google_drive(file_id)
