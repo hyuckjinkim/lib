@@ -14,6 +14,8 @@
     파일을 하나를 삭제한다.
 6. `delete_files_with_pattern`
     입력된 pattern을 통해 파일을 삭제한다.
+7. `load_from_google_drive`
+    Google Drive 다운로드 링크로 부터 파일을 다운로드 받는다.
 """
 
 import pickle
@@ -141,7 +143,7 @@ def delete_files_with_pattern(pattern: str,
     extension = get_script_extension()
     assert extension in ['.py', '.ipynb'], "extension must be one of ['.py', '.ipynb']"
 
-    # (1) if ipynb file
+    # (1) if ipynb file : tqdm으로 처리
     if extension=='.ipynb':
         files_not_deleted = []
         with tqdm(total=len(files_to_delete)) as pbar:
@@ -155,7 +157,7 @@ def delete_files_with_pattern(pattern: str,
                         print(f"Error deleting {file_path}")
                         files_not_deleted.append(file_path)
 
-    # (2) if py file
+    # (2) if py file : tqdm 없이 자체적으로 만든 progress bar로 처리.
     elif extension=='.py':
         files_not_deleted = []
         total_files = len(files_to_delete)
